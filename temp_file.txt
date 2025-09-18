@@ -1,0 +1,317 @@
+'use client'
+
+import { useState, useEffect, Suspense } from 'react'
+import { motion } from 'framer-motion'
+import toast from 'react-hot-toast'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Input as FormattedInput } from '@/components/ui/input-formatted'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { PasswordStrength, usePasswordStrength } from '@/components/ui/password-strength'
+import { 
+  Zap, 
+  Eye, 
+  EyeOff, 
+  Check, 
+  CreditCard, 
+  Loader2,
+  Phone,
+  User,
+  Building
+} from 'lucide-react'
+import Link from 'next/link'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { PlanInfo } from '@/lib/subscription-service'
+// Fluxo público não usa auth-client diretamente
+
+// Interfaces de tipos
+interface PlanLimits {
+  orders: number | string
+  products: number | string 
+  tables: number | string
+  admins: number | string
+}
+
+interface Plan {
+  id: string
+  name: string
+  price: number
+  stripePriceId: string
+  description: string
+  limits: PlanLimits
+  features: string[]
+  popular?: boolean
+  planKey?: string
+}
+
+function SignupPageContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  
+  // Estados do usuário
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  
+  // Estados do restaurante
+  const [restaurantName, setRestaurantName] = useState('')
+  const [restaurantPhone, setRestaurantPhone] = useState('')
+  const [restaurantAddress, setRestaurantAddress] = useState('')
+  const [restaurantNumber, setRestaurantNumber] = useState('')
+  const [restaurantNeighborhood, setRestaurantNeighborhood] = useState('')
+  const [restaurantCity, setRestaurantCity] = useState('')
+  const [restaurantState, setRestaurantState] = useState('')
+  const [restaurantCep, setRestaurantCep] = useState('')
+  const [category, setCategory] = useState('restaurant')
+  
+  // Estados de controle
+  const [selectedPlan, setSelectedPlan] = useState('pro')
+  const [isLoading, setIsLoading] = useState(false)
+  const [isExiting, setIsExiting] = useState(false)
+  
+  // Novo estado para planos dinâmicos
+  const [dynamicPlans, setDynamicPlans] = useState<Plan[]>([])
+  const [plansLoading, setPlansLoading] = useState(true)
+  const [plansError, setPlansError] = useState<string | null>(null)
+  
+  // Hook de validação de força da senha
+  const { isValid: isPasswordValid } = usePasswordStrength(password)
+
+  // Função para navegação com animação de saída
+  const handleNavigation = (path: string) => {
+    setIsExiting(true)
+    setTimeout(() => {
+      router.push(path)
+    }, 800)
+  }
+
+  // Variantes de animação consistentes
+  const fadeInUp = {
+    initial: { opacity: 0, y: 30 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -20 }
+  }
+
+  const fadeInLeft = {
+    initial: { opacity: 0, x: -30 },
+    animate: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: -20 }
+  }
+
+  const fadeInRight = {
+    initial: { opacity: 0, x: 30 },
+    animate: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: 20 }
+  }
+
+  const fadeIn = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 }
+  }
+
+  // Função para buscar planos dinâmicos do Stripe
+  const fetchDynamicPlans = async () => {
+    try {
+      setPlansLoading(true)
+      setPlansError(null)
+      const response = await fetch('/api/subscription/plans')
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao carregar planos: ${response.status}`)
+      }
+
+      const data = await response.json()
+      
+      if (!data.plans || data.plans.length === 0) {
+        throw new Error('Nenhum plano encontrado no Stripe')
+      }
+
+      // Converter formato PlanInfo para Plan
+      const convertedPlans = data.plans.map((planInfo: PlanInfo) => ({
+        id: planInfo.id,
+        name: planInfo.name,
+        price: planInfo.price / 100, // Converter de centavos para reais
+        stripePriceId: planInfo.stripePriceId,
+        description: planInfo.description,
+        limits: {
+          orders: planInfo.limits.maxOrders === -1 ? 'unlimited' : planInfo.limits.maxOrders,
+          products: planInfo.limits.maxProducts === -1 ? 'unlimited' : planInfo.limits.maxProducts,
+          tables: planInfo.limits.maxTables === -1 ? 'unlimited' : planInfo.limits.maxTables,
+          admins: planInfo.limits.maxUsers === -1 ? 'unlimited' : planInfo.limits.maxUsers
+        },
+        planKey: planInfo.id,
+        popular: planInfo.id === 'pro' // Marcar Pro como popular
+      }))
+      
+      setDynamicPlans(convertedPlans)
+      console.log('✅ Planos carregados com sucesso:', convertedPlans)
+    } catch (error) {
+      console.error('❌ Erro ao carregar planos dinâmicos:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido ao carregar planos'
+      setPlansError(errorMessage)
+      setDynamicPlans([])
+    } finally {
+      setPlansLoading(false)
+    }
+  }
+
+  // Carregar planos dinâmicos ao montar o componente
+  useEffect(() => {
+    fetchDynamicPlans()
+    
+    // Timeout para erro se a API demorar muito
+    const timeout = setTimeout(() => {
+      setPlansLoading(false)
+      setPlansError('Timeout: A conexão com o Stripe está demorando muito. Tente recarregar a página.')
+      setDynamicPlans([])
+      console.log('⏰ Timeout de carregamento de planos - definindo erro')
+    }, 10000) // 10 segundos
+    
+    return () => clearTimeout(timeout)
+  }, [])
+
+  // Verificar se há erros na URL
+  useEffect(() => {
+    const error = searchParams.get('error')
+    const details = searchParams.get('details')
+    
+    if (error) {
+      let errorMessage = 'Ocorreu um erro inesperado'
+      
+      switch (error) {
+        case 'payment_failed':
+          errorMessage = 'Pagamento não foi concluído. Tente novamente.'
+          break
+        case 'signup_failed':
+          errorMessage = details ? decodeURIComponent(details) : 'Erro ao criar conta. Tente novamente.'
+          break
+        case 'verification_failed':
+          errorMessage = 'Erro ao verificar pagamento. Entre em contato com o suporte.'
+          break
+        default:
+          errorMessage = error
+      }
+      
+      toast.error(errorMessage, { duration: 6000 })
+      
+      // Limpar a URL após mostrar o erro
+      const url = new URL(window.location.href)
+      url.searchParams.delete('error')
+      url.searchParams.delete('details')
+      window.history.replaceState({}, '', url.toString())
+    }
+
+    const cancelled = searchParams.get('cancelled')
+    if (cancelled) {
+      toast('Pagamento cancelado. Você pode tentar novamente.', { 
+        icon: 'ℹ️',
+        duration: 4000 
+      })
+      
+      // Limpar a URL
+      const url = new URL(window.location.href)
+      url.searchParams.delete('cancelled')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [searchParams])
+
+  // Verificar plano selecionado via URL
+  useEffect(() => {
+    const planFromUrl = searchParams.get('plan')
+    if (planFromUrl && ['starter', 'pro', 'enterprise'].includes(planFromUrl)) {
+      setSelectedPlan(planFromUrl)
+    }
+  }, [searchParams])
+
+  // Função utilitária para gerar features baseadas nos limites
+  const generateFeatures = (planKey: string, limits: PlanLimits | null) => {
+    const baseFeatures: { [key: string]: string[] } = {
+      starter: [
+        'Dashboard básico',
+        'Relatórios simples',
+        'Suporte por email'
+      ],
+      pro: [
+        'Tudo do Starter',
+        'App PWA personalizado',
+        'Pagamentos via Stripe',
+        'Relatórios avançados',
+        'Integração WhatsApp',
+        'Suporte prioritário 24/7',
+        'Backup automático'
+      ],
+      enterprise: [
+        'Tudo do Pro',
+        'Multi-restaurantes',
+        'API personalizada',
+        'White label completo',
+        'Integração ERP/POS',
+        'Gerente de conta dedicado',
+        'SLA de 99.9% uptime'
+      ]
+    }
+
+    const features = [...(baseFeatures[planKey] || [])]
+    
+    // Adicionar features baseadas nos limites
+    if (limits) {
+      if (limits.orders === 'unlimited') {
+        features.push('Pedidos ilimitados')
+      } else if (limits.orders) {
+        features.push(`Até ${limits.orders} pedidos/mês`)
+      }
+
+      if (limits.products === 'unlimited') {
+        features.push('Produtos ilimitados no cardápio')
+      } else if (limits.products) {
+        features.push(`Até ${limits.products} produtos no cardápio`)
+      }
+
+      if (limits.tables === 'unlimited') {
+        features.push('Mesas ilimitadas com QR Code')
+      } else if (limits.tables) {
+        features.push(`Até ${limits.tables} mesas com QR Code`)
+      }
+    }
+
+    return features
+  }
+
+  // Usar apenas planos dinâmicos - sem fallback
+  const plans = (() => {
+    console.log('📊 Dynamic plans length:', dynamicPlans.length)
+    console.log('📊 Dynamic plans:', dynamicPlans)
+    console.log('📊 Plans error:', plansError)
+    
+    if (dynamicPlans.length > 0) {
+      const finalPlans = dynamicPlans.map(plan => ({
+        ...plan,
+        features: generateFeatures(plan.planKey || plan.id, plan.limits)
+      }))
+      
+      // Deduplicar planos por ID para evitar chaves duplicadas
+      const uniquePlans = finalPlans.filter((plan, index, self) => 
+        index === self.findIndex(p => p.id === plan.id)
+      )
+      
+      console.log('📊 Final unique plans:', uniquePlans)
+      return uniquePlans
+    }
+    
+    // Retornar array vazio se não há planos ou há erro
+    return []
+  })()
+
+  const handleSubmit = async () => {
