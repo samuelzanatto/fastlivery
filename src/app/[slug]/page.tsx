@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useSession } from '@/lib/auth-client'
 import { toastHelpers } from '@/lib/toast-helpers'
 import { useAutoOpenClose } from '@/hooks/use-auto-open-close'
+import { useRestaurantStatus } from '@/hooks/use-restaurant-status'
 import { parseOpeningHours, type WeeklyHours } from '@/lib/utils-app'
 import { PWAHeader } from '@/components/pwa-header'
 import { UserProfileSheet } from '@/components/user-profile-sheet'
@@ -143,6 +144,13 @@ function RestaurantPageContent() {
     }
   })
 
+  // Verificação periódica do status do restaurante
+  const { status: restaurantStatus, isLoading: statusLoading, error: _statusError } = useRestaurantStatus({
+    slug: params.slug as string,
+    enabled: !!restaurant,
+    refreshInterval: 30000 // 30 segundos
+  })
+
   // Validação e carregamento do restaurante
   useEffect(() => {
     const validateRestaurant = async () => {
@@ -196,6 +204,15 @@ function RestaurantPageContent() {
 
   const addToCart = (product: Product) => {
     if (!restaurant) return
+    
+    // Verificar se o restaurante pode aceitar pedidos
+    if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
+      toastHelpers.system.error(
+        restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'
+      )
+      return
+    }
+    
     addItem({
       id: product.id,
       productId: product.id,
@@ -210,6 +227,14 @@ function RestaurantPageContent() {
   }
 
   const handleProductClick = async (product: Product) => {
+    // Verificar se o restaurante pode aceitar pedidos
+    if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
+      toastHelpers.system.error(
+        restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'
+      )
+      return
+    }
+    
     try {
       // Buscar opções do produto
       const response = await fetch(`/api/products/${product.id}/options`)
@@ -243,6 +268,14 @@ function RestaurantPageContent() {
     totalPrice: number
   ) => {
     if (!restaurant) return
+
+    // Verificar se o restaurante pode aceitar pedidos
+    if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
+      toastHelpers.system.error(
+        restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'
+      )
+      return
+    }
 
     // Gerar texto descritivo das opções
     const optionsText = generateOptionsText(product, selectedOptions)
@@ -375,8 +408,13 @@ function RestaurantPageContent() {
                   <h1 className="text-xl sm:text-2xl font-bold text-slate-800">
                     {restaurant.name}
                   </h1>
-                  {restaurant.isOpen ? (
-                    <Badge className="bg-green-100 text-green-800 text-xs">Aberto</Badge>
+                  {/* Status Badge - Atualizado com status em tempo real */}
+                  {statusLoading ? (
+                    <Badge variant="secondary" className="text-xs animate-pulse">Verificando...</Badge>
+                  ) : restaurantStatus?.canAcceptOrders ? (
+                    <Badge className="bg-green-100 text-green-800 text-xs">Aberto - Aceitando Pedidos</Badge>
+                  ) : restaurantStatus?.isOpen ? (
+                    <Badge className="bg-yellow-100 text-yellow-800 text-xs">Aberto - Não Aceitando Pedidos</Badge>
                   ) : (
                     <Badge className="bg-red-100 text-red-800 text-xs">Fechado</Badge>
                   )}
@@ -514,9 +552,6 @@ function RestaurantPageContent() {
             )}
           </div>
         </div>
-        
-        {/* Floating Cart Component */}
-        <IntegratedCheckout restaurantSlug={restaurant.slug} />
         
         {/* User Profile Sheet - Global */}
         <UserProfileSheet />
@@ -662,6 +697,23 @@ function RestaurantPageContent() {
 
           {/* Products - Mobile optimized */}
           <div className="lg:col-span-3 order-2">
+            {/* Aviso quando restaurante não aceita pedidos */}
+            {restaurantStatus && !restaurantStatus.canAcceptOrders && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800">
+                  <Clock className="h-4 w-4" />
+                  <p className="text-sm font-medium">
+                    {restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'}
+                  </p>
+                </div>
+                {restaurantStatus.nextChange && (
+                  <p className="text-red-600 text-xs mt-1">
+                    Próxima alteração: {restaurantStatus.nextChange}
+                  </p>
+                )}
+              </div>
+            )}
+            
             <div className="space-y-4">
               {selectedCategory && (
                 <div className="hidden lg:block">
@@ -721,6 +773,7 @@ function RestaurantPageContent() {
                               variant="outline"
                               onClick={() => removeFromCart(product.id)}
                               className="h-8 w-8 p-0"
+                              disabled={!!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
@@ -731,6 +784,7 @@ function RestaurantPageContent() {
                               size="sm"
                               onClick={() => addToCart(product)}
                               className="bg-orange-500 hover:bg-orange-600 h-8 w-8 p-0"
+                              disabled={!!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
@@ -740,6 +794,7 @@ function RestaurantPageContent() {
                             size="sm"
                             onClick={() => handleProductClick(product)}
                             className="bg-orange-500 hover:bg-orange-600 text-xs px-3 h-8"
+                            disabled={!!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
                           >
                             <Plus className="h-3 w-3 mr-1" />
                             Adicionar
@@ -759,7 +814,10 @@ function RestaurantPageContent() {
       <UserProfileSheet />
       
       {/* Floating Checkout Cart */}
-      <IntegratedCheckout restaurantSlug={params.slug as string} />
+      <IntegratedCheckout 
+        restaurantSlug={params.slug as string} 
+        restaurantStatus={restaurantStatus}
+      />
       
       {/* Product Options Modal */}
       <ProductOptionsModal

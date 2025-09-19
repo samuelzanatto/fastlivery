@@ -1,0 +1,7 @@
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <rect width="16" height="16" fill="#1f2937" rx="2"/>
+  <circle cx="8" cy="6" r="2" fill="white"/>
+  <path d="M4 10h8v1h-8z" fill="white"/>
+  <path d="M5 12h6v1h-6z" fill="white"/>
+  <text x="8" y="15" font-family="Arial, sans-serif" font-size="1" text-anchor="middle" fill="white" font-weight="bold">ZL</text>
+</svg>

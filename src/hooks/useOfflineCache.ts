@@ -245,30 +245,3 @@ async function deleteFromIndexedDB(key: string): Promise<void> {
     }
   })
 }
-
-// Hook para detectar se está rodando como PWA
-export function usePWA() {
-  const [isPWA, setIsPWA] = useState(false)
-  const [isInstallable, setIsInstallable] = useState(false)
-
-  useEffect(() => {
-    // Verificar se está rodando como PWA
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-    const isNavigatorStandalone = 'standalone' in navigator && (navigator as { standalone?: boolean }).standalone
-    
-    setIsPWA(isStandalone || Boolean(isNavigatorStandalone))
-
-    // Verificar se é instalável
-    const handleBeforeInstallPrompt = () => {
-      setIsInstallable(true)
-    }
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    }
-  }, [])
-
-  return { isPWA, isInstallable }
-}

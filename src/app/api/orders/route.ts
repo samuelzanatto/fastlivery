@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Prisma, OrderStatus as DBOrderStatus, OrderType as DBOrderType } from '@prisma/client'
-import { getSocketIO } from '@/app/api/socket/route'
+import { isRestaurantOpen } from '@/lib/restaurant-hours'
+// import { getSocketIO } from '@/app/api/socket/route'
 
 // Map helpers (DB enum -> UI)
 function mapOrderStatus(status: string) {
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verificar se restaurante existe
+    // Verificar se restaurante existe e está aberto
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: restaurantId },
       select: { 
@@ -207,7 +208,9 @@ export async function POST(request: NextRequest) {
         minimumOrder: true,
         acceptsDelivery: true,
         acceptsPickup: true,
-        acceptsDineIn: true
+        acceptsDineIn: true,
+        isOpen: true,
+        openingHours: true
       }
     })
 
@@ -215,6 +218,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Restaurante não encontrado' },
         { status: 404 }
+      )
+    }
+
+    // Verificar se o restaurante está aberto
+    if (!isRestaurantOpen(restaurant.isOpen, restaurant.openingHours)) {
+      return NextResponse.json(
+        { error: 'Restaurante fechado no momento' },
+        { status: 400 }
       )
     }
 
@@ -284,35 +295,33 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Emitir evento Socket.IO para notificação em tempo real
+    // Emitir evento WebSocket para notificação em tempo real
     try {
-      const io = getSocketIO()
-      if (io) {
-        const orderEvent = {
-          order: {
-            id: order.id,
-            orderNumber: order.orderNumber,
-            customerName: order.customerName,
-            total: order.total,
-            type: order.type,
-            status: order.status,
-            items: order.items.map(item => ({
-              id: item.productId,
-              name: item.product.name,
-              quantity: item.quantity,
-              price: item.price
-            }))
-          },
-          restaurantId: order.restaurantId,
-          timestamp: new Date()
-        }
-
-        // Emitir para todos os usuários conectados na sala do restaurante
-        io.to(`restaurant-${order.restaurantId}`).emit('new-order', orderEvent)
-        console.log(`[SOCKET] Novo pedido emitido para restaurante ${order.restaurantId}:`, orderEvent.order.orderNumber)
+      const { emitWebSocketEvent } = await import('@/lib/socket')
+      
+      const orderEvent = {
+        order: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          total: order.total,
+          type: order.type,
+          status: order.status,
+          items: order.items.map(item => ({
+            id: item.productId,
+            name: item.product.name,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        },
+        restaurantId: order.restaurantId,
+        timestamp: new Date()
       }
+
+      await emitWebSocketEvent('new-order', orderEvent)
+      console.log(`[WebSocket] Novo pedido emitido para restaurante ${order.restaurantId}:`, orderEvent.order.orderNumber)
     } catch (socketError) {
-      console.error('[SOCKET] Erro ao emitir evento de novo pedido:', socketError)
+      console.error('[WebSocket] Erro ao emitir evento de novo pedido:', socketError)
       // Não falhar a criação do pedido por conta do socket
     }
 

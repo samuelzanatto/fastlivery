@@ -1,36 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { StripeSyncService } from '@/lib/stripe-sync'
 
-// API Route que pode ser chamada por cron job (Vercel Cron, GitHub Actions, etc.)
+// API Route para sincronização automática do Stripe via cron job
 export async function GET(request: NextRequest) {
   try {
     // Verificar se é uma chamada autorizada (por segurança)
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET
     
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    // Em desenvolvimento, permitir chamadas sem autenticação
+    const isDevelopment = process.env.NODE_ENV === 'development'
+    
+    if (!isDevelopment && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    console.log('🕐 Iniciando sincronização automática do Stripe...')
+    console.log('🕐 [CRON] Iniciando sincronização automática do Stripe...')
+    const startTime = Date.now()
     
     // Sincronizar dados do Stripe
     const result = await StripeSyncService.fullSync()
     
-    console.log(`✅ Sincronização automática concluída: ${result.products.length} produtos, ${result.prices.length} preços`)
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+    const message = `Sincronização concluída em ${duration}s: ${result.products.length} produtos, ${result.prices.length} preços`
+    
+    console.log(`✅ [CRON] ${message}`)
     
     return NextResponse.json({
       success: true,
-      message: `Sincronização concluída: ${result.products.length} produtos, ${result.prices.length} preços`,
+      message,
       timestamp: new Date().toISOString(),
-      data: result
+      duration: `${duration}s`,
+      data: {
+        products: result.products.length,
+        prices: result.prices.length
+      }
     })
   } catch (error) {
-    console.error('❌ Erro na sincronização automática:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+    console.error('❌ [CRON] Erro na sincronização automática:', errorMessage)
+    console.error('❌ [CRON] Stack trace:', error)
+    
     return NextResponse.json(
       { 
+        success: false,
         error: 'Erro na sincronização automática', 
-        details: error instanceof Error ? error.message : 'Erro desconhecido',
+        details: errorMessage,
         timestamp: new Date().toISOString()
       },
       { status: 500 }

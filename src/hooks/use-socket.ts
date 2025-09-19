@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { io, Socket } from 'socket.io-client'
 
 interface UseSocketOptions {
   restaurantId?: string
@@ -47,99 +46,137 @@ interface PaymentUpdate {
 type SocketCallback = (...args: unknown[]) => void
 
 export function useSocket(options: UseSocketOptions = {}) {
-  const [socket, setSocketState] = useState<Socket | null>(null)
-  const socketRef = useRef<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const wsRef = useRef<WebSocket | null>(null)
+  const listenersRef = useRef<Map<string, SocketCallback[]>>(new Map())
   const [attempt, setAttempt] = useState(0)
   const maxRetries = 5
 
+  const emit = (event: string, ...args: unknown[]) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Se há apenas um argumento, enviá-lo diretamente
+      // Caso contrário, enviar como array
+      const data = args.length === 1 ? args[0] : args
+      wsRef.current.send(JSON.stringify({ type: event, data }))
+    }
+  }
+
+  const on = (event: string, callback: SocketCallback) => {
+    const listeners = listenersRef.current.get(event) || []
+    listeners.push(callback)
+    listenersRef.current.set(event, listeners)
+
+    return () => {
+      const currentListeners = listenersRef.current.get(event) || []
+      const index = currentListeners.indexOf(callback)
+      if (index > -1) {
+        currentListeners.splice(index, 1)
+        listenersRef.current.set(event, currentListeners)
+      }
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
+    let retryTimeout: NodeJS.Timeout
 
-    async function init() {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      const socketUrl = baseUrl.replace(':3000', ':3001')
-
-      try {
-        // Tentar ping para inicializar rota e servidor
-        await fetch(`${baseUrl}/api/socket`).catch(() => {})
-  } catch {
-        // Ignorar erro de pre-flight
+    function connect() {
+      if (cancelled) return
+      
+      // Não tentar conectar se já há uma conexão ativa
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        return
+      }
+      
+      // Fechar conexão anterior se existir
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
       }
 
-      if (cancelled) return
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${protocol}//${window.location.host}/api/socket`
 
-      const socketInstance = io(socketUrl, {
-        path: '/api/socketio',
-        addTrailingSlash: false,
-        reconnection: false, // controle manual
-        timeout: 5000,
-        transports: ['websocket', 'polling']
-      })
+      try {
+        const ws = new WebSocket(wsUrl)
+        wsRef.current = ws
 
-  socketRef.current = socketInstance
-  setSocketState(socketInstance)
+        ws.onopen = () => {
+          console.log('WebSocket conectado')
+          setIsConnected(true)
+          setAttempt(0)
 
-      socketInstance.on('connect', () => {
-        console.log('Conectado ao Socket.IO')
-        setIsConnected(true)
-        setAttempt(0)
-        if (options.restaurantId) socketInstance.emit('join-restaurant', options.restaurantId)
-        if (options.userId) socketInstance.emit('join-user', options.userId)
-        if (options.orderId) socketInstance.emit('join-order', options.orderId)
-      })
-
-      socketInstance.on('connect_error', (err) => {
-        console.warn('Erro conexão socket:', err.message)
-        socketInstance.close()
-        if (attempt < maxRetries) {
-          const nextAttempt = attempt + 1
-            setAttempt(nextAttempt)
-          const delay = Math.min(1000 * 2 ** nextAttempt, 10000)
-          setTimeout(() => {
-            if (!cancelled) init()
-          }, delay)
+          // Join rooms after connection
+          if (options.restaurantId) emit('join-restaurant', options.restaurantId)
+          if (options.userId) emit('join-user', options.userId)
+          if (options.orderId) emit('join-order', options.orderId)
         }
-      })
 
-      socketInstance.on('disconnect', (reason) => {
-        console.log('Desconectado do Socket.IO:', reason)
-        setIsConnected(false)
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            const { type, data } = message
+
+            // Trigger listeners for this event type
+            const listeners = listenersRef.current.get(type) || []
+            listeners.forEach(callback => callback(data))
+          } catch (error) {
+            console.error('Erro ao processar mensagem WebSocket:', error)
+          }
+        }
+
+        ws.onclose = (event) => {
+          console.log('WebSocket desconectado:', event.code, event.reason)
+          setIsConnected(false)
+          wsRef.current = null
+
+          // Só tentar reconectar se não foi cancelado e não foi um fechamento intencional
+          if (!cancelled && event.code !== 1000 && attempt < maxRetries) {
+            const nextAttempt = attempt + 1
+            setAttempt(nextAttempt)
+            const delay = Math.min(1000 * Math.pow(2, nextAttempt), 10000)
+            retryTimeout = setTimeout(() => {
+              if (!cancelled) connect()
+            }, delay)
+          }
+        }
+
+        ws.onerror = (error) => {
+          console.error('Erro WebSocket:', error)
+          // Não logar como erro se é apenas desenvolvimento
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('WebSocket falhou (normal em desenvolvimento com hot reload)')
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao criar WebSocket:', error)
         if (!cancelled && attempt < maxRetries) {
           const nextAttempt = attempt + 1
           setAttempt(nextAttempt)
-          const delay = Math.min(1000 * 2 ** nextAttempt, 10000)
-          setTimeout(() => {
-            if (!cancelled) init()
-          }, delay)
+          retryTimeout = setTimeout(() => {
+            if (!cancelled) connect()
+          }, 2000)
         }
-      })
+      }
     }
 
-    init()
+    // Pequeno delay para evitar tentativas imediatas em desenvolvimento
+    const initialDelay = process.env.NODE_ENV === 'development' ? 500 : 0
+    const initialTimeout = setTimeout(connect, initialDelay)
 
-    return () => { cancelled = true; socketRef.current?.close() }
-  // Dependências controladas; 'attempt' força re-init; socketRef não precisa
+    return () => {
+      cancelled = true
+      clearTimeout(initialTimeout)
+      clearTimeout(retryTimeout)
+      if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+        wsRef.current.close(1000, 'Component unmounting')
+        wsRef.current = null
+      }
+    }
   }, [options.restaurantId, options.userId, options.orderId, attempt])
 
-  // Função para escutar eventos
-  const on = (event: string, callback: SocketCallback) => {
-    if (socket) {
-      socket.on(event, callback)
-      return () => socket.off(event, callback)
-    }
-    return () => {}
-  }
-
-  // Função para emitir eventos
-  const emit = (event: string, ...args: unknown[]) => {
-    if (socket) {
-      socket.emit(event, ...args)
-    }
-  }
-
   return {
-    socket,
+    socket: wsRef.current,
     isConnected,
     on,
     emit

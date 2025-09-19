@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PasswordStrength, usePasswordStrength } from '@/components/ui/password-strength'
-import { EmailOtpVerification } from '@/components/email-otp-verification'
+import { ModernEmailOtpVerification } from '@/components/modern-email-otp-verification'
 import { 
   Zap, 
   Eye, 
@@ -442,7 +442,10 @@ function SignupPageContent() {
       // Guardar a senha temporariamente vinculada à sessão do Stripe
       try {
         if (typeof window !== 'undefined' && data.id) {
-          sessionStorage.setItem(`signup:pwd:${data.id}`, password)
+          const key = `signup:pwd:${data.id}`
+          sessionStorage.setItem(key, password)
+          console.log('[Signup] Senha salva no sessionStorage com key:', key)
+          console.log('[Signup] Verificando se foi salva:', !!sessionStorage.getItem(key))
         }
       } catch {}
 
@@ -465,7 +468,7 @@ function SignupPageContent() {
   const selectedPlanData = plans.find(p => p.id === selectedPlan)
 
   // Função para iniciar verificação de email
-  const handleStartEmailVerification = () => {
+  const handleStartEmailVerification = async () => {
     if (!email) {
       toast.error('Por favor, digite seu email primeiro')
       return
@@ -477,7 +480,30 @@ function SignupPageContent() {
       return
     }
 
-    setShowEmailVerification(true)
+    // Enviar OTP antes de abrir o dialog
+    const loadingToast = toast.loading('Enviando código de verificação...')
+    
+    try {
+      const response = await fetch('/api/signup/send-verification-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Erro ao enviar código')
+      }
+
+      toast.success('Código enviado para seu email!', { id: loadingToast })
+      setShowEmailVerification(true)
+      
+    } catch (error) {
+      console.error('Erro ao enviar OTP:', error)
+      toast.error(error instanceof Error ? error.message : 'Erro ao enviar código', { id: loadingToast })
+    }
   }
 
   // Função chamada quando email é verificado com sucesso
@@ -495,17 +521,18 @@ function SignupPageContent() {
   return (
     <>
       {/* Modal/Overlay de Verificação de Email */}
-      {showEmailVerification && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <EmailOtpVerification
-            email={email}
-            onVerified={handleEmailVerified}
-            onBack={handleBackFromVerification}
-            title="Verificar Email"
-            description="Digite o código de 6 dígitos enviado para seu email"
-          />
-        </div>
-      )}
+      <ModernEmailOtpVerification
+        open={showEmailVerification}
+        email={email}
+        onVerified={handleEmailVerified}
+        onBack={handleBackFromVerification}
+        title="Verificar Email"
+        description="Digite o código de 6 dígitos enviado para seu email"
+        sendEndpoint="/api/signup/send-verification-otp"
+        verifyEndpoint="/api/signup/verify-verification-otp"
+        verificationType="signup"
+        autoSend={false}
+      />
 
       <motion.div 
         className="min-h-screen bg-white"

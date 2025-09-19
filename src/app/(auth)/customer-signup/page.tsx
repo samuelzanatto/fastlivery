@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Store, Eye, EyeOff, Mail, User, Phone, Chrome } from 'lucide-react'
+import { ModernEmailOtpVerification } from '@/components/modern-email-otp-verification'
+import { Store, Eye, EyeOff, Mail, User, Phone, Chrome, Check } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signUp, signIn } from '@/lib/auth-client'
@@ -37,6 +39,11 @@ export default function CustomerSignUpPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  
+  // Estados de verificação de email
+  const [showEmailVerification, setShowEmailVerification] = useState(false)
+  const [isEmailVerified, setIsEmailVerified] = useState(false)
+  
   const router = useRouter()
 
   // Verificar se há mensagens na URL
@@ -80,6 +87,57 @@ export default function CustomerSignUpPage() {
     })
   }
 
+  // Função para iniciar verificação de email
+  const handleStartEmailVerification = async () => {
+    if (!formData.email) {
+      toast.error('Por favor, digite seu email primeiro')
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(formData.email)) {
+      toast.error('Por favor, digite um email válido')
+      return
+    }
+
+    // Enviar OTP antes de abrir o dialog
+    const loadingToast = toast.loading('Enviando código de verificação...')
+    
+    try {
+      const response = await fetch('/api/customer/send-verification-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: formData.email })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Erro ao enviar código')
+      }
+
+      toast.success('Código enviado para seu email!', { id: loadingToast })
+      setShowEmailVerification(true)
+      
+    } catch (error) {
+      console.error('Erro ao enviar OTP:', error)
+      toast.error(error instanceof Error ? error.message : 'Erro ao enviar código', { id: loadingToast })
+    }
+  }
+
+  // Função chamada quando email é verificado com sucesso
+  const handleEmailVerified = () => {
+    setIsEmailVerified(true)
+    setShowEmailVerification(false)
+    toast.success('Email verificado! Agora você pode finalizar seu cadastro.')
+  }
+
+  // Função para voltar da verificação
+  const handleBackFromVerification = () => {
+    setShowEmailVerification(false)
+  }
+
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -90,6 +148,13 @@ export default function CustomerSignUpPage() {
 
     if (formData.password.length < 8) {
       toast.error('A senha deve ter pelo menos 8 caracteres')
+      return
+    }
+
+    // Verificação obrigatória de email
+    if (!isEmailVerified) {
+      toast.error('Você precisa verificar seu email antes de continuar')
+      handleStartEmailVerification()
       return
     }
 
@@ -120,7 +185,8 @@ export default function CustomerSignUpPage() {
           },
           body: JSON.stringify({
             phone: formData.phone,
-            userType: 'CUSTOMER'
+            userType: 'CUSTOMER',
+            emailVerified: true // Marca como verificado
           })
         })
 
@@ -174,8 +240,23 @@ export default function CustomerSignUpPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="grid min-h-screen lg:grid-cols-2">
+    <>
+      {/* Modal/Overlay de Verificação de Email */}
+      <ModernEmailOtpVerification
+        open={showEmailVerification}
+        email={formData.email}
+        onVerified={handleEmailVerified}
+        onBack={handleBackFromVerification}
+        title="Verificar Email"
+        description="Digite o código de 6 dígitos enviado para seu email"
+        sendEndpoint="/api/customer/send-verification-otp"
+        verifyEndpoint="/api/customer/verify-verification-otp"
+        verificationType="customer"
+        autoSend={false}
+      />
+
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="grid min-h-screen lg:grid-cols-2">
         {/* Left Column - Sign Up Form */}
         <div className="flex items-center justify-center p-8">
           <motion.div 
@@ -259,20 +340,50 @@ export default function CustomerSignUpPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-slate-700">E-mail</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        placeholder="seu@email.com"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        required
-                        className="pl-10 h-12 border-slate-300 focus:border-orange-500 focus:ring-orange-500"
-                      />
+                    <Label htmlFor="email" className="flex items-center justify-between text-slate-700">
+                      <span>E-mail</span>
+                      {isEmailVerified && (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          <Check className="h-3 w-3 mr-1" />
+                          Verificado
+                        </Badge>
+                      )}
+                    </Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          placeholder="seu@email.com"
+                          value={formData.email}
+                          onChange={handleInputChange}
+                          required
+                          className={`pl-10 h-12 border-slate-300 focus:border-orange-500 focus:ring-orange-500 ${
+                            isEmailVerified ? "border-green-200 bg-green-50" : ""
+                          }`}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant={isEmailVerified ? "outline" : "default"}
+                        onClick={handleStartEmailVerification}
+                        disabled={!formData.email || isEmailVerified}
+                        className={
+                          isEmailVerified 
+                            ? "bg-green-50 border-green-200 text-green-700 h-12 px-4" 
+                            : "bg-blue-600 hover:bg-blue-700 h-12 px-4"
+                        }
+                      >
+                        <Mail className="h-4 w-4" />
+                      </Button>
                     </div>
+                    {!isEmailVerified && (
+                      <p className="text-xs text-amber-600">
+                        ⚠️ Você deve verificar seu email antes de continuar
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -449,7 +560,8 @@ export default function CustomerSignUpPage() {
             </motion.div>
           </div>
         </motion.div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

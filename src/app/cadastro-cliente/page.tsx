@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { PWAHeader } from '@/components/pwa-header'
+import { ModernEmailOtpVerification } from '@/components/modern-email-otp-verification'
 import { Store, Eye, EyeOff, Mail, User, Phone, Chrome } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -25,6 +26,8 @@ export default function CustomerSignUpPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [showEmailVerification, setShowEmailVerification] = useState(false)
+  const [isEmailVerified, setIsEmailVerified] = useState(false)
   const router = useRouter()
 
   // Verificar se há mensagens na URL sem useSearchParams
@@ -59,60 +62,54 @@ export default function CustomerSignUpPage() {
     })
   }
 
-  const handleEmailSignUp = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (formData.password !== formData.confirmPassword) {
-      toast.error('As senhas não coincidem')
-      return
-    }
-
-    if (formData.password.length < 8) {
-      toast.error('A senha deve ter pelo menos 8 caracteres')
-      return
-    }
-
     setIsLoading(true)
 
     try {
-      const { data, error } = await signUp.email({
-        email: formData.email,
-        password: formData.password,
-        name: formData.name,
-        callbackURL: '/'
-      })
-
-      if (error) {
-        toast.error(error.message || 'Erro ao criar conta')
+      // Validações
+      if (formData.password !== formData.confirmPassword) {
+        toast.error('As senhas não coincidem')
         setIsLoading(false)
         return
       }
 
-      if (data) {
-        // Atualizar campos adicionais via API
-        await fetch('/api/user/update-profile', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            phone: formData.phone,
-            userType: 'CUSTOMER',
-            customerMetadata: {
-              source: 'direct_signup',
-              preferences: {
-                notifications: true,
-                marketing: false
-              }
-            }
-          })
-        })
-
-        toast.success('Conta criada com sucesso!')
-        router.push('/')
+      if (formData.password.length < 8) {
+        toast.error('A senha deve ter pelo menos 8 caracteres')
+        setIsLoading(false)
+        return
       }
+
+      // Verificar se o email foi verificado
+      if (!isEmailVerified) {
+        toast.error('Verifique seu email antes de finalizar o cadastro')
+        setIsLoading(false)
+        return
+      }
+
+      const { error } = await signUp.email({
+        email: formData.email,
+        password: formData.password,
+        name: formData.name,
+      })
+
+      if (error) {
+        if (error.message?.includes('User already exists')) {
+          toast.error('Este email já está em uso')
+        } else {
+          toast.error('Erro no cadastro')
+        }
+        setIsLoading(false)
+        return
+      }
+
+      // Cadastro realizado com sucesso
+      toast.success('Cadastro realizado com sucesso!')
+      
+      // Redirecionar para login ou página inicial
+      router.push('/login')
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro inesperado'
+      const errorMessage = err instanceof Error ? err.message : 'Erro no cadastro'
       toast.error(errorMessage)
       setIsLoading(false)
     }
@@ -139,6 +136,28 @@ export default function CustomerSignUpPage() {
       toast.error(errorMessage)
       setIsGoogleLoading(false)
     }
+  }
+
+  // Iniciar verificação de email
+  const handleStartEmailVerification = async () => {
+    if (!formData.email) {
+      toast.error('Digite um email válido')
+      return
+    }
+
+    setShowEmailVerification(true)
+  }
+
+  // Função chamada quando email é verificado com sucesso
+  const handleEmailVerified = () => {
+    setIsEmailVerified(true)
+    setShowEmailVerification(false)
+    toast.success('Email verificado! Agora você pode finalizar seu cadastro.')
+  }
+
+  // Função para voltar da verificação
+  const handleBackFromVerification = () => {
+    setShowEmailVerification(false)
   }
 
   return (
@@ -193,7 +212,7 @@ export default function CustomerSignUpPage() {
             </div>
 
             {/* Email/Password Form */}
-            <form onSubmit={handleEmailSignUp} className="space-y-4">
+            <form onSubmit={handleSignUp} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Nome completo</Label>
                 <div className="relative">
@@ -224,8 +243,41 @@ export default function CustomerSignUpPage() {
                     onChange={handleInputChange}
                     required
                     className="w-full pl-10"
+                    disabled={isEmailVerified}
                   />
+                  {isEmailVerified && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="h-4 w-4 bg-green-500 rounded-full flex items-center justify-center">
+                        <svg className="h-2.5 w-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
                 </div>
+                
+                {/* Botão de verificação de email */}
+                {!isEmailVerified && formData.email && (
+                  <Button
+                    type="button"
+                    onClick={handleStartEmailVerification}
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+                  >
+                    <Mail className="h-3 w-3 mr-1" />
+                    Verificar email
+                  </Button>
+                )}
+                
+                {isEmailVerified && (
+                  <p className="text-sm text-green-600 flex items-center gap-1">
+                    <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    Email verificado
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -302,18 +354,29 @@ export default function CustomerSignUpPage() {
               <Button
                 type="submit"
                 className="w-full bg-orange-500 hover:bg-orange-600 h-12"
-                disabled={isLoading}
+                disabled={isLoading || !isEmailVerified}
               >
                 {isLoading ? (
                   <div className="flex items-center gap-2">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-b-transparent"></div>
                     <span>Criando conta...</span>
                   </div>
+                ) : !isEmailVerified ? (
+                  'Verifique seu email primeiro'
                 ) : (
                   'Criar conta'
                 )}
               </Button>
             </form>
+
+            {/* Componente de verificação de email */}
+            <ModernEmailOtpVerification
+              open={showEmailVerification}
+              email={formData.email}
+              onVerified={handleEmailVerified}
+              onBack={handleBackFromVerification}
+              verificationType="customer"
+            />
 
             <div className="mt-6 space-y-3 text-center">
               <p className="text-sm text-slate-600">

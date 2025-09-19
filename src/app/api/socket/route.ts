@@ -1,88 +1,244 @@
-import { Server as SocketIOServer } from 'socket.io'
-import { createServer, Server } from 'http'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
+import type { WebSocket, WebSocketServer } from 'ws'
+import type { IncomingMessage } from 'http'
+import { setWebSocketServer, broadcastToRestaurant, broadcastToOrder, broadcastToConversation } from '@/lib/ws-server'
 
-let io: SocketIOServer | undefined
-let httpServer: Server | undefined
+// Estender WebSocket com propriedades customizadas
+interface ExtendedWebSocket extends WebSocket {
+  restaurantId?: string
+  orderId?: string
+  userId?: string
+  conversationId?: string
+}
 
-export function initSocketIO(): SocketIOServer {
-  if (!io) {
-    console.log('Inicializando Socket.IO server...')
-    
-    httpServer = createServer()
-    
-    io = new SocketIOServer(httpServer, {
-      path: '/api/socketio',
-      addTrailingSlash: false,
-      cors: {
-        origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        methods: ['GET', 'POST']
+// Tipos para mensagens
+interface WebSocketMessage {
+  type: string
+  data?: unknown
+  restaurantId?: string
+  orderId?: string
+  userId?: string
+  conversationId?: string
+}
+
+// WebSocket handler usando next-ws
+export function SOCKET(
+  client: WebSocket,
+  request: IncomingMessage,
+  server: WebSocketServer,
+) {
+  // Registrar o servidor para broadcasting
+  setWebSocketServer(server)
+  
+  console.log('✅ Cliente WebSocket conectado')
+
+  const extClient = client as ExtendedWebSocket
+
+  // Extrair query params da URL para identificar o tipo de conexão
+  const url = new URL(request.url || '', `http://${request.headers.host}`)
+  const restaurantId = url.searchParams.get('restaurantId')
+  const orderId = url.searchParams.get('orderId')
+  const userId = url.searchParams.get('userId')
+  const conversationId = url.searchParams.get('conversationId')
+
+  // Marcar cliente com identificadores para broadcasting
+  extClient.restaurantId = restaurantId || undefined
+  extClient.orderId = orderId || undefined
+  extClient.userId = userId || undefined
+  extClient.conversationId = conversationId || undefined
+
+  console.log('🔗 Conexão estabelecida:', { restaurantId, orderId, userId, conversationId })
+
+  // Lidar com mensagens recebidas
+  client.on('message', (data: Buffer) => {
+    try {
+      const message = JSON.parse(data.toString()) as WebSocketMessage
+      console.log('📨 Mensagem recebida:', message.type, message)
+
+      // Processar diferentes tipos de eventos
+      switch (message.type) {
+        case 'join-restaurant':
+          // Suporte para diferentes formatos de dados
+          let restaurantIdToJoin: string | undefined
+          if (message.restaurantId) {
+            restaurantIdToJoin = message.restaurantId
+          } else if (message.data) {
+            // Se data for um array, pegar o primeiro elemento
+            if (Array.isArray(message.data) && message.data.length > 0) {
+              restaurantIdToJoin = message.data[0] as string
+            } else if (typeof message.data === 'string') {
+              restaurantIdToJoin = message.data
+            }
+          }
+          
+          if (restaurantIdToJoin) {
+            extClient.restaurantId = restaurantIdToJoin
+            console.log(`📍 Cliente entrou na sala restaurant-${restaurantIdToJoin}`)
+          } else {
+            console.warn('⚠️ restaurantId não encontrado na mensagem join-restaurant')
+          }
+          break
+
+        case 'join-order':
+          // Suporte para diferentes formatos de dados
+          let orderIdToJoin: string | undefined
+          if (message.orderId) {
+            orderIdToJoin = message.orderId
+          } else if (message.data) {
+            // Se data for um array, pegar o primeiro elemento
+            if (Array.isArray(message.data) && message.data.length > 0) {
+              orderIdToJoin = message.data[0] as string
+            } else if (typeof message.data === 'string') {
+              orderIdToJoin = message.data
+            }
+          }
+          
+          if (orderIdToJoin) {
+            extClient.orderId = orderIdToJoin
+            console.log(`📦 Cliente entrou na sala order-${orderIdToJoin}`)
+          } else {
+            console.warn('⚠️ orderId não encontrado na mensagem join-order')
+          }
+          break
+
+        case 'join-user':
+          // Suporte para diferentes formatos de dados
+          let userIdToJoin: string | undefined
+          if (message.userId) {
+            userIdToJoin = message.userId
+          } else if (message.data) {
+            // Se data for um array, pegar o primeiro elemento
+            if (Array.isArray(message.data) && message.data.length > 0) {
+              userIdToJoin = message.data[0] as string
+            } else if (typeof message.data === 'string') {
+              userIdToJoin = message.data
+            }
+          }
+          
+          if (userIdToJoin) {
+            extClient.userId = userIdToJoin
+            console.log(`👤 Cliente entrou na sala user-${userIdToJoin}`)
+          } else {
+            console.warn('⚠️ userId não encontrado na mensagem join-user')
+          }
+          break
+
+        case 'join-chat':
+          // Suporte para diferentes formatos de dados
+          let conversationIdToJoin: string | undefined
+          if (message.conversationId) {
+            conversationIdToJoin = message.conversationId
+          } else if (message.data) {
+            // Se data for um array, pegar o primeiro elemento
+            if (Array.isArray(message.data) && message.data.length > 0) {
+              conversationIdToJoin = message.data[0] as string
+            } else if (typeof message.data === 'string') {
+              conversationIdToJoin = message.data
+            }
+          }
+          
+          if (conversationIdToJoin) {
+            extClient.conversationId = conversationIdToJoin
+            console.log(`💬 Cliente entrou na sala conversation-${conversationIdToJoin}`)
+          } else {
+            console.warn('⚠️ conversationId não encontrado na mensagem join-chat')
+          }
+          break
+
+        case 'chat-message':
+          // Broadcast mensagem de chat para todos os participantes da conversa
+          if (message.data && typeof message.data === 'object') {
+            const data = message.data as { conversationId?: string }
+            if (data.conversationId) {
+              broadcastToConversation(server, data.conversationId, {
+                type: 'chat-message',
+                data: message.data
+              })
+            }
+          }
+          break
+
+        case 'chat-typing':
+          // Broadcast indicador de digitação
+          if (message.data && typeof message.data === 'object') {
+            const data = message.data as { conversationId?: string }
+            if (data.conversationId) {
+              broadcastToConversation(server, data.conversationId, {
+                type: 'chat-typing',
+                data: message.data
+              })
+            }
+          }
+          break
+
+        case 'new-order':
+          // Broadcast para todos os clientes do restaurante
+          if (message.data && typeof message.data === 'object' && 'restaurantId' in message.data) {
+            broadcastToRestaurant(server, (message.data as { restaurantId: string }).restaurantId, {
+              type: 'new-order',
+              data: message.data
+            })
+          }
+          break
+
+        case 'payment-update':
+          // Broadcast para restaurante e pedido específico
+          if (message.data && typeof message.data === 'object') {
+            const data = message.data as { restaurantId?: string; orderId?: string }
+            if (data.restaurantId) {
+              broadcastToRestaurant(server, data.restaurantId, {
+                type: 'payment-update',
+                data: message.data
+              })
+            }
+            if (data.orderId) {
+              broadcastToOrder(server, data.orderId, {
+                type: 'payment-update',
+                data: message.data
+              })
+            }
+          }
+          break
+
+        case 'order-cancelled':
+          // Broadcast para restaurante e pedido específico
+          if (message.data && typeof message.data === 'object') {
+            const data = message.data as { restaurantId?: string }
+            if (data.restaurantId) {
+              broadcastToRestaurant(server, data.restaurantId, {
+                type: 'order-cancelled',
+                data: message.data
+              })
+            }
+          }
+          break
+
+        default:
+          console.warn('⚠️ Tipo de mensagem desconhecido:', message.type)
       }
-    })
+    } catch (error) {
+      console.error('❌ Erro ao processar mensagem:', error)
+    }
+  })
 
-    io.on('connection', (socket) => {
-      console.log('Cliente conectado:', socket.id)
+  client.on('close', () => {
+    console.log('❌ Cliente WebSocket desconectado')
+  })
 
-      // Join do restaurante
-      socket.on('join-restaurant', (restaurantId: string) => {
-        socket.join(`restaurant-${restaurantId}`)
-        console.log(`Socket ${socket.id} entrou na sala restaurant-${restaurantId}`)
-      })
-
-      // Join do cliente
-      socket.on('join-user', (userId: string) => {
-        socket.join(`user-${userId}`)
-        console.log(`Socket ${socket.id} entrou na sala user-${userId}`)
-      })
-
-      // Join do pedido específico
-      socket.on('join-order', (orderId: string) => {
-        socket.join(`order-${orderId}`)
-        console.log(`Socket ${socket.id} entrou na sala order-${orderId}`)
-      })
-
-      socket.on('disconnect', () => {
-        console.log('Cliente desconectado:', socket.id)
-      })
-    })
-
-    // Iniciar servidor HTTP para Socket.IO
-    const port = parseInt(process.env.SOCKET_PORT || '3001')
-    httpServer.listen(port, () => {
-      console.log(`Socket.IO server rodando na porta ${port}`)
-    })
-  }
-
-  return io
+  client.on('error', (error: Error) => {
+    console.error('❌ Erro no WebSocket:', error)
+  })
 }
 
-// Função para obter a instância do Socket.IO
-export function getSocketIO(): SocketIOServer | undefined {
-  if (!io) {
-    initSocketIO()
-  }
-  return io
-}
-
-// Handler para Next.js API routes
-export async function GET(_request: NextRequest) {
-  try {
-    const socketIO = initSocketIO()
-    return NextResponse.json({ 
-      message: 'Socket.IO server inicializado',
-      connected: socketIO.engine.clientsCount,
-      port: process.env.SOCKET_PORT || '3001'
-    }, {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  } catch (error) {
-    console.error('Erro ao inicializar Socket.IO:', error)
-    return NextResponse.json({ 
-      error: 'Erro ao inicializar Socket.IO' 
-    }, {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  }
+// HTTP endpoint para status
+export async function GET(_req: NextRequest) {
+  return new Response(JSON.stringify({ 
+    message: 'WebSocket server ativo',
+    path: '/api/socket',
+    timestamp: new Date().toISOString(),
+    protocol: 'WebSocket (next-ws)'
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  })
 }

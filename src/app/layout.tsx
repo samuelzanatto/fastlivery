@@ -13,15 +13,40 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "ZapLivery - Sistema de Delivery Inteligente",
   description: "Automatize seu delivery com IA e maximize seus resultados",
+  applicationName: "ZapLivery",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "ZapLivery",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  openGraph: {
+    type: "website",
+    siteName: "ZapLivery",
+    title: "ZapLivery - Sistema de Delivery Inteligente",
+    description: "Automatize seu delivery com IA e maximize seus resultados",
+  },
+  twitter: {
+    card: "summary",
+    title: "ZapLivery",
+    description: "Sistema de Delivery Inteligente com IA",
+  },
+  icons: {
+    icon: "/icons/icon-32x32.png",
+    shortcut: "/favicon.ico",
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  // Importante para lidar com teclado virtual
-  viewportFit: 'cover'
+  themeColor: "#1f2937",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -32,11 +57,45 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="md:scrollbar-auto scrollbar-hide">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+        {/* Basic Meta Tags */}
+        <meta name="application-name" content="ZapLivery" />
         <meta name="format-detection" content="telephone=no" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="msapplication-TileColor" content="#1f2937" />
+        <meta name="msapplication-tap-highlight" content="no" />
+        
+        {/* Icons */}
+        <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+        <link rel="mask-icon" href="/icons/favicon.svg" color="#1f2937" />
+        
+        {/* Service Worker Cleanup Script */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Cleanup old service workers from PWA removal
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  for(let registration of registrations) {
+                    registration.unregister();
+                    console.log('Service Worker desregistrado:', registration.scope);
+                  }
+                });
+              }
+
+              // Suprimir warnings de preload de recursos não utilizados
+              const originalWarn = console.warn;
+              console.warn = function() {
+                const message = arguments[0];
+                if (typeof message === 'string' && 
+                    message.includes('preloaded using link preload but not used within a few seconds')) {
+                  return; // Suprimir esse warning específico
+                }
+                originalWarn.apply(console, arguments);
+              };
+            `
+          }}
+        />
       </head>
       <body
         className={`${poppins.variable} font-sans antialiased md:scrollbar-auto scrollbar-hide`}

@@ -49,7 +49,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useRestaurantContext } from '@/hooks/useRestaurantContext'
 import { UserAvatar } from "@/components/user-avatar"
+import { ModernEmailOtpVerification } from '@/components/modern-email-otp-verification'
 import { usePermissions } from '@/hooks/useRestaurantContext'
+import toast from 'react-hot-toast'
 
 interface Role {
   id: string
@@ -94,9 +96,6 @@ export default function UsersPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showOtpDialog, setShowOtpDialog] = useState(false)
   const [pendingEmployeeEmail, setPendingEmployeeEmail] = useState("")
-  const [otpCode, setOtpCode] = useState("")
-  const [otpLoading, setOtpLoading] = useState(false)
-  const [resendLoading, setResendLoading] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
   const [_editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
 
@@ -201,82 +200,6 @@ export default function UsersPage() {
     }
     return () => clearInterval(interval)
   }, [resendCooldown])
-
-  const handleVerifyOtp = async () => {
-    if (!otpCode.trim()) {
-      alert('Por favor, insira o código de verificação')
-      return
-    }
-
-    setOtpLoading(true)
-    try {
-      const response = await fetch('/api/employees/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: pendingEmployeeEmail,
-          otp: otpCode
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Código inválido')
-      }
-
-      // Sucesso - atualizar lista e fechar dialog
-      await fetchEmployees()
-      setShowOtpDialog(false)
-      setOtpCode("")
-      setPendingEmployeeEmail("")
-      setResendCooldown(0)
-      alert('Funcionário verificado e ativado com sucesso!')
-      
-    } catch (error) {
-      console.error('Erro ao verificar OTP:', error)
-      alert(error instanceof Error ? error.message : 'Erro ao verificar código')
-    } finally {
-      setOtpLoading(false)
-    }
-  }
-
-  const handleResendOtp = async () => {
-    if (!pendingEmployeeEmail || resendCooldown > 0) return
-
-    setResendLoading(true)
-    try {
-      const response = await fetch('/api/employees/resend-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: pendingEmployeeEmail
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Erro ao reenviar código')
-      }
-
-      alert('Código reenviado com sucesso!')
-      setOtpCode("")
-      setResendCooldown(60) // 60 segundos de cooldown
-      
-    } catch (error) {
-      console.error('Erro ao reenviar OTP:', error)
-      alert(error instanceof Error ? error.message : 'Erro ao reenviar código')
-    } finally {
-      setResendLoading(false)
-    }
-  }
-
-  const handleCloseOtpDialog = () => {
-    // Permitir fechar o dialog, mas manter o email pendente para posterior verificação
-    setShowOtpDialog(false)
-    setOtpCode("")
-    setResendCooldown(0)
-    // Não limpar o pendingEmployeeEmail para permitir reabrir o dialog depois
-  }
 
   const handleUpdateEmployee = async (employeeId: string, updates: Partial<Employee>) => {
     try {
@@ -439,77 +362,26 @@ export default function UsersPage() {
         </Dialog>
 
         {/* Dialog OTP Verification */}
-        <Dialog open={showOtpDialog} onOpenChange={(open) => {
-          if (!open) handleCloseOtpDialog()
-        }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Verificar Email</DialogTitle>
-            </DialogHeader>
-            
-            <div className="space-y-4">
-              <div className="text-sm text-slate-600">
-                Um código de verificação foi enviado para <strong>{pendingEmployeeEmail}</strong>
-              </div>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="text-xs text-blue-700 font-medium mb-1">ℹ️ Informações importantes:</div>
-                <ul className="text-xs text-blue-600 space-y-1">
-                  <li>• O código expira em <strong>10 minutos</strong></li>
-                  <li>• Você pode fechar este dialog e voltar depois</li>
-                  <li>• Funcionário ficará pendente até verificação</li>
-                </ul>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="otp">Código de Verificação</Label>
-                <Input
-                  id="otp"
-                  type="text"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  placeholder="Digite o código de 6 dígitos"
-                  maxLength={6}
-                  className="text-center text-lg tracking-widest"
-                />
-              </div>
-              
-              <div className="flex gap-3 pt-4">
-                <Button 
-                  onClick={handleVerifyOtp}
-                  disabled={otpLoading || !otpCode.trim()}
-                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
-                >
-                  {otpLoading ? 'Verificando...' : 'Verificar Código'}
-                </Button>
-              </div>
-              
-              <div className="flex justify-between items-center pt-2 border-t">
-                <Button 
-                  type="button" 
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleResendOtp}
-                  disabled={resendLoading || resendCooldown > 0}
-                  className="text-orange-600 hover:text-orange-700"
-                >
-                  {resendLoading ? 'Reenviando...' : 
-                   resendCooldown > 0 ? `Reenviar em ${resendCooldown}s` : 'Reenviar Código'}
-                </Button>
-                
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  size="sm"
-                  onClick={handleCloseOtpDialog}
-                  className="border-slate-200 text-slate-700 hover:bg-slate-50"
-                >
-                  Fechar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <ModernEmailOtpVerification
+          open={showOtpDialog}
+          email={pendingEmployeeEmail}
+          onVerified={() => {
+            setShowOtpDialog(false)
+            setPendingEmployeeEmail("")
+            setResendCooldown(0)
+            fetchEmployees() // Recarregar lista para mostrar status atualizado
+            toast.success('Funcionário ativado com sucesso!')
+          }}
+          onBack={() => {
+            setShowOtpDialog(false)
+            setResendCooldown(0)
+          }}
+          title="Verificar Email do Funcionário"
+          description={`Um código de verificação foi enviado para ${pendingEmployeeEmail}`}
+          sendEndpoint="/api/employees/send-otp"
+          verifyEndpoint="/api/employees/verify-otp"
+          verificationType="employee"
+        />
       </div>
 
       {/* Filters and Search */}

@@ -49,6 +49,9 @@ function couldBeRestaurantSlug(pathname: string): boolean {
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://192.168.1.106:3000',
+  'https://sdk.mercadopago.com',
+  'https://api.mercadopago.com',
+  'https://secure.mlstatic.com',
   process.env.NEXT_PUBLIC_APP_URL || ''
 ].filter(Boolean)
 
@@ -58,7 +61,16 @@ function buildCorsHeaders(origin: string | null) {
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cookie, Set-Cookie',
     'Access-Control-Allow-Credentials': 'true',
-    'Vary': 'Origin'
+    'Vary': 'Origin',
+    // Headers específicos para Mercado Pago
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://secure.mlstatic.com https://*.mercadopago.com",
+      "style-src 'self' 'unsafe-inline' https://sdk.mercadopago.com https://secure.mlstatic.com https://*.mercadopago.com",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self' https://api.mercadopago.com https://*.mercadopago.com https://sdk.mercadopago.com wss: ws:",
+      "frame-src 'self' https://*.mercadopago.com",
+    ].join('; ')
   }
   if (allowOrigin) headers['Access-Control-Allow-Origin'] = allowOrigin
   return headers
@@ -170,6 +182,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files (public folder)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|public|manifest.json|sw.js|icon-192x192.png|icon-512x512.png).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|public|icon-192x192.png|icon-512x512.png).*)',
   ],
 }

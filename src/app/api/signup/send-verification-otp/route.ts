@@ -32,7 +32,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email obrigatório' }, { status: 400 })
     }
 
+    // Validar formato do email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
+    }
+
     console.log('[send-verification-otp] Enviando OTP para verificação:', email)
+    console.log('[send-verification-otp] SMTP Config:', {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      user: process.env.SMTP_USER ? '***' : 'undefined',
+      from: process.env.SMTP_FROM
+    })
 
     // Throttling: verificar último envio
     const lastSent = otpSendMap.get(email)

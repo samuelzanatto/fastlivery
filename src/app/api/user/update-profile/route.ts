@@ -13,15 +13,25 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { phone, userType } = body
+    const { phone, userType, emailVerified } = body
+
+    console.log('[UPDATE_PROFILE] Updating profile for user:', session.user.id)
+    console.log('[UPDATE_PROFILE] Data to update:', { phone, userType, emailVerified })
 
     // Atualizar dados do usuário
     const updatedUser = await prisma.user.update({
       where: { id: session.user.id },
       data: {
         phone,
-        userType: userType || 'CUSTOMER'
+        userType: userType || 'CUSTOMER',
+        ...(emailVerified !== undefined && { emailVerified })
       }
+    })
+
+    console.log('[UPDATE_PROFILE] User updated successfully:', {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      emailVerified: updatedUser.emailVerified
     })
 
     return NextResponse.json({

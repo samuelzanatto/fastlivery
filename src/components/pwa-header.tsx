@@ -20,7 +20,8 @@ import {
   DollarSign,
   Star,
   LogIn,
-  UserPlus
+  UserPlus,
+  MessageCircle
 } from 'lucide-react'
 
 /**
@@ -142,6 +143,11 @@ export function PWAHeader({
           icon: ShoppingBag,
           label: 'Meus Pedidos',
           href: '/pedidos',
+        },
+        {
+          icon: MessageCircle,
+          label: 'Chats',
+          href: '/chats',
         },
         {
           icon: MapPin,

@@ -1,0 +1,7 @@
+<svg width="384" height="384" viewBox="0 0 384 384" xmlns="http://www.w3.org/2000/svg">
+  <rect width="384" height="384" fill="#1f2937" rx="57.599999999999994"/>
+  <circle cx="192" cy="134.39999999999998" r="46.08" fill="white"/>
+  <path d="M96 230.39999999999998h192v19.200000000000003h-192z" fill="white"/>
+  <path d="M115.19999999999999 268.79999999999995h153.60000000000002v19.200000000000003h-153.60000000000002z" fill="white"/>
+  <text x="192" y="337.92" font-family="Arial, sans-serif" font-size="30.72" text-anchor="middle" fill="white" font-weight="bold">ZL</text>
+</svg>

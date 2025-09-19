@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { createMercadoPagoService } from '@/lib/mercadopago'
-import { getSocketIO } from '@/app/api/socket/route'
+// import { getSocketIO } from '@/app/api/socket/route'
 import Stripe from 'stripe'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -146,39 +146,39 @@ export async function POST(
       }
     })
 
-    // Emitir evento Socket.IO
+    // TODO: Emitir evento Socket.IO
+    // Emitir evento WebSocket para cancelamento
     try {
-      const io = getSocketIO()
-      if (io) {
-        const orderEvent = {
-          order: {
-            id: updatedOrder.id,
-            orderNumber: updatedOrder.orderNumber,
-            customerName: updatedOrder.customerName,
-            total: updatedOrder.total,
-            status: updatedOrder.status,
-            paymentStatus: updatedOrder.paymentStatus,
-            items: updatedOrder.items.map(item => ({
-              id: item.productId,
-              name: item.product.name,
-              quantity: item.quantity,
-              price: item.price
-            }))
-          },
-          restaurantId: updatedOrder.restaurantId,
-          timestamp: new Date(),
-          refund: refundResult ? {
-            id: refundResult.id,
-            status: refundResult.status,
-            amount: refundResult.amount
-          } : null
-        }
-
-        io.to(`restaurant-${updatedOrder.restaurantId}`).emit('order-cancelled', orderEvent)
-        console.log(`[SOCKET] Pedido cancelado emitido para restaurante ${updatedOrder.restaurantId}:`, orderEvent.order.orderNumber)
+      const { emitWebSocketEvent } = await import('@/lib/socket')
+      
+      const orderEvent = {
+        order: {
+          id: updatedOrder.id,
+          orderNumber: updatedOrder.orderNumber,
+          customerName: updatedOrder.customerName,
+          total: updatedOrder.total,
+          status: updatedOrder.status,
+          paymentStatus: updatedOrder.paymentStatus,
+          items: updatedOrder.items.map(item => ({
+            id: item.productId,
+            name: item.product.name,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        },
+        restaurantId: updatedOrder.restaurantId,
+        timestamp: new Date(),
+        refund: refundResult ? {
+          id: refundResult.id,
+          status: refundResult.status,
+          amount: refundResult.amount
+        } : null
       }
+
+      await emitWebSocketEvent('order-cancelled', orderEvent)
+      console.log(`[WebSocket] Pedido cancelado emitido para restaurante ${updatedOrder.restaurantId}:`, orderEvent.order.orderNumber)
     } catch (socketError) {
-      console.error('[SOCKET] Erro ao emitir evento de cancelamento:', socketError)
+      console.error('[WebSocket] Erro ao emitir evento de cancelamento:', socketError)
     }
 
     return NextResponse.json({

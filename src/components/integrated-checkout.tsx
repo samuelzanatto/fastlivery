@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { usePaymentStatusPolling } from '@/hooks/usePaymentStatusPolling'
 import { usePaymentStatusSocket } from '@/hooks/usePaymentStatusSocket'
 import { useCart } from '@/contexts/cart-context'
@@ -40,6 +41,12 @@ import { toast } from 'sonner'
 
 interface IntegratedCheckoutProps {
   restaurantSlug?: string
+  restaurantStatus?: {
+    isOpen: boolean
+    canAcceptOrders: boolean
+    message?: string
+    nextChange?: string
+  } | null
 }
 
 type CheckoutStep = 'cart' | 'address' | 'payment' | 'confirmation'
@@ -284,7 +291,18 @@ interface AddressFormData {
 }
 
 // Componente principal do carrinho flutuante
-export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) {
+export function IntegratedCheckout({ restaurantSlug, restaurantStatus }: IntegratedCheckoutProps) {
+  const searchParams = useSearchParams()
+  const debug = searchParams?.get('mpDebug') === '1'
+  const pushDebug = useCallback((...parts: unknown[]) => {
+    if (!debug) return
+    try {
+      const w = window as unknown as { __MP_CHECKOUT_LOGS__?: unknown[] }
+      if (!w.__MP_CHECKOUT_LOGS__) w.__MP_CHECKOUT_LOGS__ = []
+      w.__MP_CHECKOUT_LOGS__.push({ ts: Date.now(), parts })
+    } catch {}
+    console.debug('[MP CHECKOUT]', ...parts)
+  }, [debug])
   const { items, addItem, removeItem, clearCart } = useCart()
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('cart')
   const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null)
@@ -337,7 +355,7 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
     }
   }, [])
   
-  console.log('IntegratedCheckout - items:', items.length, 'totalItems:', totalItems)
+  if (debug) pushDebug('mount-or-render', { items: items.length, totalItems })
   
   // Carregar endereços salvos da API
   useEffect(() => {
@@ -409,107 +427,36 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
   useEffect(() => {
     let ignore = false
     async function fetchKey() {
-      if (!restaurantSlug) return
+      if (!restaurantSlug) {
+        pushDebug('fetchKey:skip-no-slug')
+        return
+      }
+      pushDebug('fetchKey:start', { restaurantSlug })
       setLoadingPublicKey(true)
       try {
         const res = await fetch(`/api/restaurants/${restaurantSlug}/mp-public-key`)
+        pushDebug('fetchKey:response', { ok: res.ok, status: res.status })
         if (res.ok) {
           const data = await res.json()
+          pushDebug('fetchKey:data', { hasKey: !!data.publicKey })
           if (!ignore) setPublicKey(data.publicKey || null)
         } else {
+          const text = await res.text()
+            .catch(() => '')
+          pushDebug('fetchKey:bad-status', { status: res.status, body: text.slice(0,200) })
           if (!ignore) setPublicKey(null)
         }
-      } catch {
+      } catch (e) {
+        pushDebug('fetchKey:error', e)
         if (!ignore) setPublicKey(null)
       } finally {
+        pushDebug('fetchKey:done')
         if (!ignore) setLoadingPublicKey(false)
       }
     }
     fetchKey()
     return () => { ignore = true }
-  }, [restaurantSlug])
-  
-  // Handler para submissão do Payment Brick oficial
-  const handlePaymentSubmit = useCallback(async (formData: unknown, additionalData?: unknown) => {
-    console.log('Payment Brick dados recebidos:', { formData, additionalData })
-    setPaymentState(prev => ({ ...prev, status: 'processing' }))
-    
-    try {
-      const response = await fetch('/api/payments/mercadopago', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          formData,
-          additionalData,
-          items,
-          customerInfo,
-          selectedAddress,
-          restaurantId: restaurantSlug,
-          totalAmount: totalPrice
-        })
-      })
-      
-      const result = await response.json()
-
-      if (response.ok) {
-        if (result.type === 'pix_payment') {
-          setPaymentState(prev => ({
-            ...prev,
-            status: 'pending',
-            pixData: {
-              qr_code: result.qr_code,
-              qr_code_base64: result.qr_code_base64,
-              ticket_url: result.ticket_url
-            },
-            paymentData: result
-          }))
-          setOrderNumber(result.order_number || `ORD-${Date.now()}`)
-        } else if (result.type === 'card_payment') {
-          // Aguardar um pouco para deixar o Payment Brick mostrar animação de sucesso
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          
-          if (result.status === 'approved') {
-            setPaymentState(prev => ({ ...prev, status: 'approved', paymentData: result }))
-            // Aguardar mais um pouco antes de navegar para confirmação
-            setTimeout(() => setCurrentStep('confirmation'), 500)
-          } else if (result.status === 'in_process' || result.status === 'pending') {
-            setPaymentState(prev => ({ ...prev, status: 'pending', paymentData: result }))
-          } else {
-            setPaymentState(prev => ({ ...prev, status: 'rejected', paymentData: result }))
-          }
-        } else if (result.type === 'checkout_pro') {
-          if (result.init_point) {
-            window.open(result.init_point, '_blank')
-            toast.info('Checkout aberto em nova aba')
-            setPaymentState(prev => ({ ...prev, status: 'pending', paymentData: result }))
-          } else {
-            toast.error('Erro ao abrir Checkout Pro')
-            setPaymentState(prev => ({ ...prev, status: 'rejected' }))
-          }
-        }
-      } else {
-        throw new Error(result.error || 'Erro no pagamento')
-      }
-    } catch (error) {
-      console.error('Erro no pagamento:', error)
-      toast.error(error instanceof Error ? error.message : 'Erro no pagamento')
-      setPaymentState(prev => ({ ...prev, status: 'rejected' }))
-      throw error
-    }
-  }, [items, customerInfo, selectedAddress, restaurantSlug, totalPrice])
-
-  // Handler para quando Payment Brick fica pronto
-  const handlePaymentReady = useCallback(() => {
-    console.log('Payment Brick carregado e pronto')
-    // Remover mudança de estado desnecessária que pode causar re-render
-  }, [])
-
-  // Handler para erros do Payment Brick
-  const handlePaymentError = useCallback((error: unknown) => {
-    console.error('Erro no Payment Brick:', error)
-    setPaymentState(prev => ({ ...prev, status: 'rejected' }))
-    toast.error('Erro no formulário de pagamento')
-  }, [])
+  }, [restaurantSlug, debug, pushDebug])
 
   // Copiar código PIX
   const handlePixCopy = (_text: string) => {
@@ -649,6 +596,25 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
   // Renderizar conteúdo do carrinho
   const renderCartStep = () => (
     <div>
+      {/* Aviso quando restaurante não aceita pedidos */}
+      {restaurantStatus && !restaurantStatus.canAcceptOrders && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2 text-red-800">
+            <AlertCircle className="h-4 w-4" />
+            <div>
+              <p className="text-sm font-medium">
+                {restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'}
+              </p>
+              {restaurantStatus.nextChange && (
+                <p className="text-red-600 text-xs mt-1">
+                  Próxima alteração: {restaurantStatus.nextChange}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      
       <ScrollArea className="max-h-80">
         <div className="space-y-0">
           {items.map((item, index) => (
@@ -828,6 +794,17 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
   // Renderizar etapa de pagamento
   const renderPaymentStep = () => (
     <div>
+      {debug && !publicKey && (
+        <div className="mb-4 p-3 border border-amber-300 bg-amber-50 rounded text-amber-800 text-xs">
+          <p className="font-semibold mb-1">[DEBUG] Public Key ausente</p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Verifique registro em restaurants: campos mercadoPagoPublicKey e mercadoPagoConfigured.</li>
+            <li>Endpoint: /api/restaurants/{restaurantSlug}/mp-public-key retornou null.</li>
+            <li>Pode usar fallback env MP_PUBLIC_KEY ou NEXT_PUBLIC_MP_PUBLIC_KEY.</li>
+            <li>Após atualizar banco, recarregue com ?mpDebug=1.</li>
+          </ul>
+        </div>
+      )}
       {/* Status pendente */}
       {paymentState.status === 'pending' && (
         <Card className="border-amber-200">
@@ -870,23 +847,97 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
         />
       )}
       {/* Payment Brick Oficial do Mercado Pago */}
-      {(paymentState.status === 'idle' || paymentState.status === 'processing') && !paymentState.pixData && publicKey && (
-        <div
-          id="payment-brick-wrapper"
-          className="mt-0 pt-0 first:mt-0 [&>*]:mt-0"
-        >
+      {(() => {
+        const canRender = (paymentState.status === 'idle' || paymentState.status === 'processing') && !paymentState.pixData && !!publicKey
+        if (!canRender && debug) {
+          pushDebug('payment-brick:skip', {
+            status: paymentState.status,
+            hasPix: !!paymentState.pixData,
+            hasPublicKey: !!publicKey
+          })
+        } else if (canRender && debug) {
+          pushDebug('payment-brick:render', {
+            status: paymentState.status,
+            hasPublicKey: !!publicKey
+          })
+        }
+        return canRender ? (
+        <div id="payment-brick-wrapper" className="-mx-2">
           <MercadoPagoPaymentBrick
             key="stable-payment-brick" // Chave estável para evitar re-mounts
             publicKey={publicKey}
             amount={totalPrice}
-            customerEmail={customerInfo.email || 'cliente@exemplo.com'}
-            onSubmit={handlePaymentSubmit}
-            onReady={handlePaymentReady}
-            onError={handlePaymentError}
+            customerInfo={{
+              name: customerInfo.name || 'Cliente',
+              email: customerInfo.email || 'cliente@exemplo.com',
+              phone: customerInfo.phone || ''
+            }}
+            items={items.map(item => ({
+              id: item.id,
+              name: item.name,
+              price: item.finalPrice,
+              quantity: item.quantity
+            }))}
+            selectedAddress={selectedAddress ? {
+              street: selectedAddress.street || '',
+              number: selectedAddress.number || '',
+              complement: selectedAddress.reference,
+              neighborhood: selectedAddress.neighborhood || '',
+              city: selectedAddress.city || '',
+              state: selectedAddress.state || '',
+              zipcode: selectedAddress.cep || ''
+            } : undefined}
+            restaurantSlug={restaurantSlug || ''}
+            debug={debug}
+            onPaymentSuccess={(result) => {
+              console.log('🟢 Payment Success:', result)
+              const paymentResult = result as Record<string, unknown>
+              if (paymentResult?.type === 'pix_payment') {
+                setPaymentState(prev => ({
+                  ...prev,
+                  status: 'pending',
+                  pixData: {
+                    qr_code: paymentResult.qr_code as string,
+                    qr_code_base64: paymentResult.qr_code_base64 as string,
+                    ticket_url: paymentResult.ticket_url as string
+                  },
+                  paymentData: paymentResult
+                }))
+                setOrderNumber((paymentResult.order_number as string) || `ORD-${Date.now()}`)
+              } else if (paymentResult?.status === 'approved') {
+                setPaymentState(prev => ({ ...prev, status: 'approved', paymentData: paymentResult }))
+                setTimeout(() => setCurrentStep('confirmation'), 500)
+              } else if (paymentResult?.status === 'in_process' || paymentResult?.status === 'pending') {
+                setPaymentState(prev => ({ ...prev, status: 'pending', paymentData: paymentResult }))
+              } else {
+                setPaymentState(prev => ({ ...prev, status: 'rejected', paymentData: paymentResult }))
+              }
+            }}
+            onPaymentError={(error) => {
+              console.error('🔴 Payment Error:', error)
+              setPaymentState(prev => ({ ...prev, status: 'rejected' }))
+              toast.error(error.message || 'Erro no pagamento')
+            }}
           />
         </div>
+        ) : null
+      })()}
+      {debug && (
+        <div className="mt-4 border rounded bg-gray-50 p-2 text-[10px] font-mono">
+          <p className="font-semibold mb-1">Checkout Debug</p>
+          <pre className="max-h-48 overflow-auto">{JSON.stringify({
+            step: currentStep,
+            paymentStatus: paymentState.status,
+            hasPixData: !!paymentState.pixData,
+            publicKeyPresent: !!publicKey,
+            items: items.length,
+            totalPrice,
+            restaurantSlug,
+            loadingPublicKey: _loadingPublicKey
+          }, null, 2)}</pre>
+        </div>
       )}
-      <div className="flex gap-4 pt-4 border-t border-gray-100 mt-4 px-4 md:px-6">
+      <div className="flex gap-4 pt-3 border-t border-gray-100 mt-3 px-2">
         <Button 
           variant="outline" 
           onClick={prevStep} 
@@ -1016,7 +1067,7 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
     return null
   }
   
-  console.log('IntegratedCheckout - Renderizando botão flutuante, totalItems:', totalItems)
+  // console.log('IntegratedCheckout - Renderizando botão flutuante, totalItems:', totalItems)
 
   return (
     <>
@@ -1037,7 +1088,7 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
         
         <SheetContent 
           side="bottom" 
-          className="rounded-t-3xl h-[84vh] border-0 shadow-2xl bg-white flex flex-col pt-6"
+          className="rounded-t-3xl h-[94vh] border-0 shadow-2xl bg-white flex flex-col pt-6"
           style={{
             // Força posicionamento fixo para evitar movimento com teclado
             position: 'fixed',
@@ -1045,8 +1096,8 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
             left: 0,
             right: 0,
             top: 'unset',
-            height: 'min(84vh, 84dvh)',
-            maxHeight: 'min(84vh, 84dvh)',
+            height: 'min(94vh, 94dvh)',
+            maxHeight: 'min(94vh, 94dvh)',
             transform: 'translateX(0) translateY(0)',
             // CSS adicional para iOS
             WebkitTransform: 'translateX(0) translateY(0)',
@@ -1058,20 +1109,20 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
             e.preventDefault()
           }}
         >
-          <SheetHeader className={`${currentStep === 'payment' ? 'pb-1 pt-0' : 'pb-3 pt-0'} px-6 flex-shrink-0 transition-all`}> 
+          <SheetHeader className={`${currentStep === 'payment' ? 'pb-1 pt-0' : 'pb-0 pt-0'} px-6 flex-shrink-0 transition-all`}> 
               <SheetTitle className="text-center text-xl font-bold text-gray-800">
                 {stepTitles[currentStep]}
               </SheetTitle>
-              <div className="mt-4">
+              <div className={`${currentStep === 'payment' ? 'mt-4 mb-0' : 'mt-4'}`}>
                 <StepIndicator currentStep={currentStep} />
               </div>
           </SheetHeader>
           
           {/* Área de conteúdo com scroll otimizado */}
-          <div className={`flex-1 overflow-auto ${currentStep === 'payment' ? 'px-6 pt-0 pb-3' : currentStep === 'address' ? 'px-0 pt-0 pb-4' : 'px-6 pt-0 pb-4'}`}>
+          <div className={`flex-1 overflow-auto ${currentStep === 'payment' ? 'px-4 pt-0 pb-2' : currentStep === 'address' ? 'px-0 pt-0 pb-4' : 'px-6 pt-0 pb-4'}`}>
             <div className={
               currentStep === 'payment'
-                ? '-mt-12 -mb-1 space-y-0'
+                ? 'space-y-0 -mt-12'
                 : currentStep === 'address'
                   ? 'space-y-0 [&_*]:mt-0 first:mt-0'
                   : ''
@@ -1082,7 +1133,7 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
 
           {/* Footer fixo com botões de navegação */}
           {currentStep !== 'confirmation' && (
-            <div className="flex-shrink-0 border-t border-gray-100 bg-white px-6 py-4">
+            <div className={`flex-shrink-0 border-t border-gray-100 bg-white px-6 ${currentStep === 'payment' ? 'py-0' : 'py-4'}`}>
               {/* Resumo de valores para etapa do carrinho */}
               {currentStep === 'cart' && (
                 <div className="mb-4 space-y-2">
@@ -1103,7 +1154,7 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
               )}
 
               <div className="flex gap-4">
-                {currentStep !== 'cart' && (
+                {currentStep !== 'cart' && currentStep !== 'payment' && (
                   <Button 
                     variant="outline" 
                     onClick={prevStep} 
@@ -1116,21 +1167,42 @@ export function IntegratedCheckout({ restaurantSlug }: IntegratedCheckoutProps) 
                 
                 {currentStep === 'cart' && (
                   <Button 
-                    onClick={nextStep} 
+                    onClick={() => {
+                      // Verificar se o restaurante pode aceitar pedidos
+                      if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
+                        toast.error(restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento')
+                        return
+                      }
+                      nextStep()
+                    }}
                     className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white"
+                    disabled={!!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
                   >
-                    Continuar
+                    {restaurantStatus && !restaurantStatus.canAcceptOrders 
+                      ? 'Restaurante Fechado' 
+                      : 'Continuar'
+                    }
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 )}
 
                 {currentStep === 'address' && (
                   <Button 
-                    onClick={nextStep} 
+                    onClick={() => {
+                      // Verificar se o restaurante pode aceitar pedidos
+                      if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
+                        toast.error(restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento')
+                        return
+                      }
+                      nextStep()
+                    }}
                     className="flex-1 h-12 bg-orange-500 hover:bg-orange-600 text-white"
-                    disabled={!selectedAddress || !customerInfo.name || !customerInfo.email}
+                    disabled={!selectedAddress || !customerInfo.name || !customerInfo.email || !!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
                   >
-                    Continuar
+                    {restaurantStatus && !restaurantStatus.canAcceptOrders 
+                      ? 'Restaurante Fechado' 
+                      : 'Continuar'
+                    }
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 )}

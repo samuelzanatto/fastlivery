@@ -37,8 +37,6 @@ export class StripeSyncService {
   static async syncProducts(): Promise<StripeProduct[]> {
     try {
       console.log('🔄 Sincronizando produtos do Stripe...')
-      console.log('📊 Prisma instance:', !!prisma)
-      console.log('📊 Prisma.stripeProduct:', !!prisma.stripeProduct)
       
       const products = await stripe.products.list({
         active: true,

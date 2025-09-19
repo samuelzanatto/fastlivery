@@ -67,7 +67,8 @@ export class SubscriptionService {
   // Buscar planos atualizados do Stripe
   static async getAvailablePlans(): Promise<PlanInfo[]> {
     try {
-      await StripeSyncService.fullSync() // Garantir que os dados estejam atualizados
+  // REMOVIDO: sincronização automática para evitar loops e reloads em dev.
+  // Agora a sincronização deve ser disparada manualmente via script (stripe:sync) ou endpoint administrativo.
       
       const productsWithPrices = await StripeSyncService.getLocalProductsWithPrices()
       

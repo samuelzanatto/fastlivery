@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createMercadoPagoService } from '@/lib/mercadopago'
-import { initSocketIO } from '@/app/api/socket/route'
 
 /*
 Variáveis de ambiente suportadas para notification_url automática:
@@ -137,11 +136,13 @@ export async function POST(req: NextRequest) {
 
     console.log('[Webhook MP] Atualizado:', updated)
 
-    // Emitir evento socket se status mudou
+    // TODO: Emitir evento socket se status mudou
+    // Emitir evento WebSocket para atualização em tempo real
     try {
-      const io = initSocketIO()
+      const { emitWebSocketEvent } = await import('@/lib/socket')
+      
       if (paymentStatus === 'APPROVED' || paymentStatus === 'REJECTED' || paymentStatus === 'CANCELLED') {
-        io.to(`restaurant-${order.restaurantId}`).emit('payment-update', {
+        await emitWebSocketEvent('payment-update', {
           paymentId: String(paymentId),
           orderId: order.id,
           orderNumber: order.orderNumber,
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
         })
       }
     } catch (socketError) {
-      console.error('[Webhook MP] Erro ao emitir socket:', socketError)
+      console.error('[Webhook MP] Erro ao emitir WebSocket:', socketError)
     }
 
     return NextResponse.json({ success: true })

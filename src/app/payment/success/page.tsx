@@ -51,11 +51,27 @@ function PaymentSuccessContent() {
           let password: string | null = null
           try {
             if (typeof window !== 'undefined') {
-              password = sessionStorage.getItem(`signup:pwd:${sessionId}`)
+              const key = `signup:pwd:${sessionId}`
+              console.log('[PaymentSuccess] Tentando recuperar senha com key:', key)
+              
+              // Listar todas as keys do sessionStorage para debug
+              const allKeys = Object.keys(sessionStorage).filter(k => k.startsWith('signup:pwd:'))
+              console.log('[PaymentSuccess] Keys encontradas no sessionStorage:', allKeys)
+              
+              const storedPassword = sessionStorage.getItem(key)
+              console.log('[PaymentSuccess] Valor bruto do sessionStorage:', storedPassword)
+              password = storedPassword && storedPassword !== 'undefined' && storedPassword !== 'null' ? storedPassword : null
               console.log('[PaymentSuccess] Senha recuperada do sessionStorage:', !!password)
             }
           } catch (error) {
             console.error('[PaymentSuccess] Erro ao recuperar senha:', error)
+          }
+
+          if (!password) {
+            console.error('[PaymentSuccess] Senha não encontrada no sessionStorage')
+            toast.error('Erro na finalização do cadastro. Tente fazer login.')
+            setIsLoading(false)
+            return
           }
 
           console.log('[PaymentSuccess] Chamando finish-signup com:', { sessionId, hasPassword: !!password })
