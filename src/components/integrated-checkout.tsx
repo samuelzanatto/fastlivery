@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { usePaymentStatusPolling } from '@/hooks/usePaymentStatusPolling'
-import { usePaymentStatusSocket } from '@/hooks/usePaymentStatusSocket'
 import { useCart } from '@/contexts/cart-context'
 import { addressService, type SavedAddress } from '@/lib/address-service'
 import { AddressFormBottomSheet } from '@/components/address-form-bottom-sheet'
@@ -291,7 +290,7 @@ interface AddressFormData {
 }
 
 // Componente principal do carrinho flutuante
-export function IntegratedCheckout({ restaurantSlug, restaurantStatus }: IntegratedCheckoutProps) {
+function IntegratedCheckoutComponent({ restaurantSlug, restaurantStatus }: IntegratedCheckoutProps) {
   const searchParams = useSearchParams()
   const debug = searchParams?.get('mpDebug') === '1'
   const pushDebug = useCallback((...parts: unknown[]) => {
@@ -519,27 +518,13 @@ export function IntegratedCheckout({ restaurantSlug, restaurantStatus }: Integra
     }
   }
   
-  // WebSocket realtime para atualizar status de pagamento
-  const { lastUpdate } = usePaymentStatusSocket({
-    restaurantId: restaurantSlug,
-    orderId: undefined, 
-    onUpdate: (u) => {
-      if (paymentState.status !== 'pending') return
-      if (u.status === 'APPROVED') {
-        setPaymentState(prev => ({ ...prev, status: 'approved' }))
-        setCurrentStep('confirmation')
-        toast.success('Pagamento aprovado!')
-      } else if (u.status === 'REJECTED' || u.status === 'CANCELLED') {
-        setPaymentState(prev => ({ ...prev, status: 'rejected' }))
-        toast.error('Pagamento não aprovado.')
-      }
-    }
-  })
+  // WebSocket realtime para atualizar status de pagamento - REMOVIDO
+  // Funcionalidade WebSocket foi removida do projeto
 
   // Fallback: se websocket não atualizar, ativa polling
   const { data: _pollFallback, isRunning: fallbackPolling } = usePaymentStatusPolling({
     orderNumber,
-    enabled: !!orderNumber && paymentState.status === 'pending' && !lastUpdate,
+    enabled: !!orderNumber && paymentState.status === 'pending',
     intervalMs: 8000,
     stopOn: d => ['APPROVED','REJECTED','CANCELLED'].includes(d.order.paymentStatus),
     onUpdate: (d) => {
@@ -1254,3 +1239,15 @@ export function IntegratedCheckout({ restaurantSlug, restaurantStatus }: Integra
     </>
   )
 }
+
+// Exportar componente memoizado para evitar re-renders desnecessários
+export const IntegratedCheckout = React.memo(IntegratedCheckoutComponent, (prevProps, nextProps) => {
+  // Comparar props manualmente para otimizar re-renders
+  return (
+    prevProps.restaurantSlug === nextProps.restaurantSlug &&
+    prevProps.restaurantStatus?.isOpen === nextProps.restaurantStatus?.isOpen &&
+    prevProps.restaurantStatus?.canAcceptOrders === nextProps.restaurantStatus?.canAcceptOrders &&
+    prevProps.restaurantStatus?.message === nextProps.restaurantStatus?.message &&
+    prevProps.restaurantStatus?.nextChange === nextProps.restaurantStatus?.nextChange
+  )
+})

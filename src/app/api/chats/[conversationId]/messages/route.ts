@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getWebSocketServer, broadcastToConversation } from '@/lib/ws-server'
 
-export async function GET(req: NextRequest, { params }: { params: { conversationId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ conversationId: string }> }) {
   try {
+    const { conversationId } = await params
     const sessionResponse = await auth.api.getSession({ headers: req.headers })
     
     if (!sessionResponse?.user?.id) {
@@ -13,8 +13,6 @@ export async function GET(req: NextRequest, { params }: { params: { conversation
         { status: 401 }
       )
     }
-
-    const conversationId = params.conversationId
 
     const conversation = await prisma.conversation.findFirst({
       where: {
@@ -69,8 +67,9 @@ export async function GET(req: NextRequest, { params }: { params: { conversation
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { conversationId: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ conversationId: string }> }) {
   try {
+    const { conversationId } = await params
     const sessionResponse = await auth.api.getSession({ headers: req.headers })
     
     if (!sessionResponse?.user?.id) {
@@ -80,7 +79,6 @@ export async function POST(req: NextRequest, { params }: { params: { conversatio
       )
     }
 
-    const { conversationId } = params
     const body = await req.json()
     const { content } = body
 
@@ -122,23 +120,8 @@ export async function POST(req: NextRequest, { params }: { params: { conversatio
       data: { updatedAt: new Date() }
     })
 
-    // Enviar via WebSocket para o restaurante
-    const wsServer = getWebSocketServer()
-    if (wsServer) {
-      broadcastToConversation(wsServer, conversationId, {
-        type: 'chat-message',
-        data: {
-          conversationId,
-          message: {
-            id: message.id,
-            content: message.content,
-            senderType: message.senderType,
-            createdAt: message.createdAt.toISOString(),
-            isRead: message.isRead
-          }
-        }
-      })
-    }
+    // Enviar via WebSocket para o restaurante - REMOVIDO
+    // Funcionalidade WebSocket foi removida do projeto
 
     return NextResponse.json({
       message: {

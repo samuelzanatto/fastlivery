@@ -136,25 +136,8 @@ export async function POST(req: NextRequest) {
 
     console.log('[Webhook MP] Atualizado:', updated)
 
-    // TODO: Emitir evento socket se status mudou
-    // Emitir evento WebSocket para atualização em tempo real
-    try {
-      const { emitWebSocketEvent } = await import('@/lib/socket')
-      
-      if (paymentStatus === 'APPROVED' || paymentStatus === 'REJECTED' || paymentStatus === 'CANCELLED') {
-        await emitWebSocketEvent('payment-update', {
-          paymentId: String(paymentId),
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          status: paymentStatus,
-          restaurantId: order.restaurantId,
-          message: `Pagamento ${paymentStatus === 'APPROVED' ? 'aprovado' : paymentStatus === 'REJECTED' ? 'rejeitado' : 'cancelado'}`,
-          timestamp: new Date()
-        })
-      }
-    } catch (socketError) {
-      console.error('[Webhook MP] Erro ao emitir WebSocket:', socketError)
-    }
+    // Emitir evento WebSocket para atualização em tempo real - REMOVIDO
+    // Funcionalidade WebSocket foi removida do projeto
 
     return NextResponse.json({ success: true })
   } catch (e) {

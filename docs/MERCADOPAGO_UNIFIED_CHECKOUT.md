@@ -73,25 +73,53 @@ Próximas melhorias Webhook:
 - Deduplicação por `payment.id` (implementar tabela de eventos ou chave idempotente).
 - Persistir histórico de transições (tabela `PaymentHistory`).
 
-## Atualização em Tempo Real (WebSocket)
-Fluxo complementa webhook para latência mínima no front.
+# Fluxo Unificado Mercado Pago (Payment Brick)
+
+## Resumo
+Sistema unificado para pagamentos via Mercado Pago usando Payment Brick.
+
+Suporte atual:
+- **PIX (bank_transfer)**: Fluxo transparente com QR Code inline
+- **Cartão de Crédito/Débito**: Pagamento direto via token ou fallback para Checkout Pro
+
+## Componentes
+
+### 1. Payment Brick (`MercadoPagoPaymentBrick`)
+- Interface unificada do Mercado Pago para capturar dados de pagamento
+- Gera token seguro para cartões
+- Suporta PIX, cartões e outros métodos
+
+### 2. Endpoint Unificado (`/api/payments/mercadopago`)
+- Recebe dados do Payment Brick
+- Processa PIX instantâneo ou cartão direto  
+- Fallback para Checkout Pro se necessário
+- Retorna tipo de resposta adequado para cada método
+
+### 3. Status Screen Brick (`MercadoPagoStatusScreenBrick`)  
+- Mostra status em tempo real para PIX
+- Integra com polling de fallback
+- UI nativa do Mercado Pago
+
+## Atualização em Tempo Real
+Sistema complementado por polling para verificação de status de pagamento.
 
 1. Webhook recebe evento e atualiza DB.
-2. Emite `payment-update` via Socket.IO para sala `restaurant-<id>` (e potencialmente `order-<id>` se ligado futuramente).
-3. Front usa `usePaymentStatusSocket` para ouvir eventos e atualizar UI instantaneamente.
-4. Polling de fallback (`usePaymentStatusPolling`) apenas se nenhum evento chegar (rede/queda socket).
+2. Frontend usa polling (`usePaymentStatusPolling`) para verificar mudanças de status.
+3. Polling verifica periodicamente até status final (APPROVED/REJECTED/CANCELLED).
 
 Hook principal:
 ```
-const { lastUpdate } = usePaymentStatusSocket({
-  restaurantId,
-  onUpdate: (u) => { /* atualizar estado */ }
+const { data } = usePaymentStatusPolling({
+  orderNumber,
+  enabled: !!orderNumber && paymentState.status === 'pending'
 })
 ```
 
 Estratégia de Resiliência:
-- WebSocket primeiro; se não houver `lastUpdate` após alguns ciclos, polling assume.
-- Ao receber status final (APPROVED/REJECTED/CANCELLED) desativa ambos.
+- Polling primário para verificação de status.
+- Ao receber status final (APPROVED/REJECTED/CANCELLED) desativa polling.
+
+## Fluxos
 
 Próximos Passos Realtime:
 - Adicionar join automático de sala específica do pedido (quando ID estiver disponível).

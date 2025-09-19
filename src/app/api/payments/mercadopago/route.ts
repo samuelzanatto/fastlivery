@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createMercadoPagoService } from '@/lib/mercadopago'
 
+// Helper para notificar novo pedido via WebSocket - REMOVIDO
+async function notifyNewOrder(restaurantId: string, orderId: string) {
+  // Funcionalidade WebSocket removida do projeto
+  console.log(`� Notificação de novo pedido para restaurante ${restaurantId}, pedido ${orderId} (WebSocket removido)`)
+}
+
 /**
  * Endpoint unificado para submissões do Payment Brick.
  * Suporta inicialmente:
@@ -13,45 +19,43 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
-    // Extrair dados do Payment Brick - estrutura correta da documentação
-    // onSubmit recebe: { selectedPaymentMethod, formData }
-    const paymentBrickData = body?.formData || {}
-    const selectedPaymentMethod = paymentBrickData.selectedPaymentMethod
-    const brickFormData = paymentBrickData.formData || {}
-    const _additionalData = body?.additionalData || {}
+    // Extrair dados do Payment Brick - estrutura real do componente
+    const selectedPaymentMethod = body?.selectedPaymentMethod
+    const brickFormData = body?.formData || {}
+    const context = body?.context || {}
     
-    // Dados do Brick
-    const paymentType = selectedPaymentMethod || brickFormData.paymentType || body?.paymentType
+    // Dados do contexto (enviados pelo frontend)
+    const _amount = context.amount || body.amount
+    const items = context.items || body.items || []
+    const customerInfo = context.customer || body.customerInfo || {}
+    const selectedAddress = context.address || body.selectedAddress
+    const restaurantSlug = context.restaurantId || body.restaurantId
+    
+    // Dados do Brick extraídos corretamente
+    const paymentType = selectedPaymentMethod
     const brickToken = brickFormData.token
     const brickPaymentMethodId = brickFormData.payment_method_id
     const brickInstallments = brickFormData.installments || 1
-    
-    // Dados do contexto (enviados pelo frontend)
-    const items = body.items || []
-    const customerInfo = body.customerInfo || {}
-    const selectedAddress = body.selectedAddress
-    const restaurantSlug = body.restaurantId
 
     console.log('[API] Dados recebidos:', {
-      paymentType,
+      paymentType: selectedPaymentMethod,
       selectedPaymentMethod,
-      hasToken: !!brickToken,
-      payment_method_id: brickPaymentMethodId,
-      installments: brickInstallments,
+      hasToken: !!brickFormData.token,
+      payment_method_id: brickFormData.payment_method_id,
+      installments: brickFormData.installments || 1,
       itemsCount: items.length,
       customerEmail: customerInfo?.email,
-      rawPaymentBrickData: paymentBrickData
+      rawPaymentBrickData: brickFormData
     })
 
-    if (!paymentType && !selectedPaymentMethod) {
+    if (!selectedPaymentMethod) {
       return NextResponse.json({ 
         error: 'Dados incompletos para pagamento: tipo de pagamento não especificado',
         debug: { 
-          paymentType, 
           selectedPaymentMethod, 
           brickFormData, 
-          paymentBrickDataKeys: Object.keys(paymentBrickData),
-          bodyKeys: Object.keys(body)
+          bodyKeys: Object.keys(body),
+          contextKeys: Object.keys(context)
         }
       }, { status: 400 })
     }
@@ -145,6 +149,10 @@ export async function POST(request: NextRequest) {
           where: { id: order.id },
           data: { stripeSessionId: String(pix.id) }
         })
+        
+        // Notificar restaurante sobre novo pedido PIX
+        await notifyNewOrder(restaurant.id, order.id)
+        
         return NextResponse.json({
           type: 'pix_payment',
             payment_id: pix.id,
@@ -184,6 +192,9 @@ export async function POST(request: NextRequest) {
           data: { stripeSessionId: String(cardResult.id) }
         })
 
+        // Notificar restaurante sobre novo pedido com cartão
+        await notifyNewOrder(restaurant.id, order.id)
+
         return NextResponse.json({
           type: 'card_payment',
           payment_id: cardResult.id,
@@ -203,6 +214,10 @@ export async function POST(request: NextRequest) {
     try {
       const pref = await mercadoPagoService.createPaymentPreference(paymentData)
       await prisma.order.update({ where: { id: order.id }, data: { stripeSessionId: String(pref.id) } })
+      
+      // Notificar restaurante sobre novo pedido (Checkout Pro)
+      await notifyNewOrder(restaurant.id, order.id)
+      
       return NextResponse.json({
         type: 'checkout_pro',
         preference_id: pref.id,

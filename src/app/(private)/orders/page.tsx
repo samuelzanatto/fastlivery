@@ -1,8 +1,6 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from "react"
-import { playNotificationSound } from '@/lib/notification-sound'
-import { useRestaurantSocket } from "@/hooks/use-socket"
 import { useSession } from "@/lib/auth-client"
 import { toastHelpers } from "@/lib/toast-helpers"
 import { 
@@ -553,7 +551,7 @@ export default function OrdersPage() {
   const { data: session } = useSession()
   
   // Configurar Socket.IO apenas quando tivermos o restaurantId
-  const [restaurantId, setRestaurantId] = useState<string | null>(null)
+  const [_restaurantId, setRestaurantId] = useState<string | null>(null)
   
   useEffect(() => {
     // Buscar restaurantId do usuário logado
@@ -574,53 +572,8 @@ export default function OrdersPage() {
     }
   }, [session])
 
-  // Hook do Socket.IO para notificações em tempo real
-  const {
-    newOrders,
-    clearNewOrders
-  } = useRestaurantSocket(restaurantId || '')
-
-  // Processar novos pedidos recebidos via Socket.IO
-  useEffect(() => {
-    if (newOrders.length > 0) {
-      newOrders.forEach(orderEvent => {
-        // Mostrar toast de notificação
-        toastHelpers.system.success(`Novo pedido recebido: #${orderEvent.order.orderNumber}`)
-        
-        // Tocar som de notificação (se o navegador permitir)
-        try {
-          playNotificationSound()
-        } catch {
-          console.log('Não foi possível tocar o som de notificação')
-        }
-
-        // Adicionar o novo pedido à lista
-        const newOrder: Order = {
-          id: orderEvent.order.id,
-          displayId: orderEvent.order.orderNumber,
-          customer: orderEvent.order.customerName,
-          items: orderEvent.order.items.map(item => `${item.quantity}x ${item.name}`),
-          total: orderEvent.order.total,
-          status: orderEvent.order.status as OrderStatus,
-          paymentStatus: 'pending' as PaymentStatus,
-          type: orderEvent.order.type.toLowerCase() as 'delivery' | 'pickup' | 'dine-in',
-          createdAt: orderEvent.timestamp.toString()
-        }
-
-        setOrders(prevOrders => [newOrder, ...prevOrders])
-        
-        // Atualizar estatísticas
-        setStats(prevStats => ({
-          ...prevStats,
-          total: prevStats.total + 1,
-          pending: prevStats.pending + 1
-        }))
-      })
-
-      // Limpar lista de novos pedidos após processar
-      clearNewOrders()
-    }
-  }, [newOrders, clearNewOrders])
+  // Hook do Socket.IO para notificações em tempo real - REMOVIDO
+  // Funcionalidade WebSocket foi removida do projeto
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)

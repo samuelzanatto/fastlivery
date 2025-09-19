@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useSession } from '@/lib/auth-client'
-import { useSocket } from '@/hooks/use-socket'
 import { 
   MessageCircle,
   Send,
@@ -48,8 +47,7 @@ export default function ChatPage() {
   
   const conversationId = params.conversationId as string
 
-  // WebSocket connection
-  const socket = useSocket()
+  // WebSocket connection removido - funcionalidade removida do projeto
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -69,10 +67,8 @@ export default function ChatPage() {
       const data = await response.json()
       setConversation(data.conversation)
       
-      // Join chat room via WebSocket
-      if (socket) {
-        socket.emit('join-chat', conversationId)
-      }
+      // Join chat room via WebSocket - REMOVIDO
+      // Funcionalidade WebSocket removida do projeto
     } catch (error) {
       console.error('Erro ao carregar conversa:', error)
       
@@ -108,7 +104,7 @@ export default function ChatPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [conversationId, session?.user, socket])
+  }, [conversationId, session?.user])
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !conversation || isSending) return
@@ -153,13 +149,8 @@ export default function ChatPage() {
         )
       } : prev)
       
-      // Enviar via WebSocket
-      if (socket) {
-        socket.emit('chat-message', {
-          conversationId,
-          message: data.message
-        })
-      }
+      // Enviar via WebSocket - REMOVIDO
+      // Funcionalidade WebSocket removida do projeto
       
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error)
@@ -209,30 +200,9 @@ export default function ChatPage() {
     scrollToBottom()
   }, [conversation?.messages])
 
-  // WebSocket listeners
-  useEffect(() => {
-    if (!socket) return
-
-    const handleNewMessage = (data: unknown) => {
-      try {
-        const messageData = data as { conversationId: string; message: ChatMessage }
-        if (messageData.conversationId === conversationId) {
-          setConversation(prev => prev ? {
-            ...prev,
-            messages: [...prev.messages, messageData.message]
-          } : prev)
-        }
-      } catch (error) {
-        console.error('Erro ao processar mensagem do WebSocket:', error)
-      }
-    }
-
-    const unsubscribe = socket.on('chat-message', handleNewMessage)
-
-    return () => {
-      unsubscribe()
-    }
-  }, [socket, conversationId])
+  // WebSocket listeners - REMOVIDO
+  // Funcionalidade WebSocket removida do projeto
+  // A atualização de mensagens em tempo real foi removida
 
   if (!session) {
     return (

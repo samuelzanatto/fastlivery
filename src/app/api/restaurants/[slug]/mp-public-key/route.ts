@@ -5,25 +5,11 @@ function debugLog(...args: unknown[]) {
   if (process.env.MP_DEBUG !== '1') return
   console.debug('[MP PUBLIC KEY API]', ...args)
 }
-// Ajuste: Em versões recentes do Next, params pode ser assíncrono em algumas resoluções internas.
-// Garantimos await defensivo caso seja um thenable.
-type SlugContext = { params: { slug: string } } | { params: Promise<{ slug: string }> }
-export async function GET(_req: NextRequest, context: SlugContext) {
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const candidateUnknown: unknown = (context as { params: unknown }).params
-    let resolvedParams: { slug?: string }
-    function isThenable<T>(v: unknown): v is PromiseLike<T> {
-      return !!v && typeof v === 'object' && 'then' in v && typeof (v as { then: unknown }).then === 'function'
-    }
-    if (isThenable<{ slug: string }>(candidateUnknown)) {
-      const awaited = await candidateUnknown
-      resolvedParams = awaited
-    } else if (candidateUnknown && typeof candidateUnknown === 'object') {
-      resolvedParams = candidateUnknown as { slug?: string }
-    } else {
-      resolvedParams = {}
-    }
-    const { slug } = resolvedParams || {}
+    const { slug } = await params
+
     if (!slug) return NextResponse.json({ error: 'Slug obrigatório' }, { status: 400 })
 
     const restaurant = await prisma.restaurant.findFirst({

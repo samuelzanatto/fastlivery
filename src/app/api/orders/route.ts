@@ -296,34 +296,8 @@ export async function POST(request: NextRequest) {
     })
 
     // Emitir evento WebSocket para notificação em tempo real
-    try {
-      const { emitWebSocketEvent } = await import('@/lib/socket')
-      
-      const orderEvent = {
-        order: {
-          id: order.id,
-          orderNumber: order.orderNumber,
-          customerName: order.customerName,
-          total: order.total,
-          type: order.type,
-          status: order.status,
-          items: order.items.map(item => ({
-            id: item.productId,
-            name: item.product.name,
-            quantity: item.quantity,
-            price: item.price
-          }))
-        },
-        restaurantId: order.restaurantId,
-        timestamp: new Date()
-      }
-
-      await emitWebSocketEvent('new-order', orderEvent)
-      console.log(`[WebSocket] Novo pedido emitido para restaurante ${order.restaurantId}:`, orderEvent.order.orderNumber)
-    } catch (socketError) {
-      console.error('[WebSocket] Erro ao emitir evento de novo pedido:', socketError)
-      // Não falhar a criação do pedido por conta do socket
-    }
+    // Funcionalidade WebSocket foi removida do projeto
+    console.log(`[LOG] Novo pedido criado para restaurante ${order.restaurantId}:`, order.orderNumber)
 
     return NextResponse.json({
       message: 'Pedido criado com sucesso',

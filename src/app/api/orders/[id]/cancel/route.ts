@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { createMercadoPagoService } from '@/lib/mercadopago'
-// import { getSocketIO } from '@/app/api/socket/route'
 import Stripe from 'stripe'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -147,39 +146,7 @@ export async function POST(
     })
 
     // TODO: Emitir evento Socket.IO
-    // Emitir evento WebSocket para cancelamento
-    try {
-      const { emitWebSocketEvent } = await import('@/lib/socket')
-      
-      const orderEvent = {
-        order: {
-          id: updatedOrder.id,
-          orderNumber: updatedOrder.orderNumber,
-          customerName: updatedOrder.customerName,
-          total: updatedOrder.total,
-          status: updatedOrder.status,
-          paymentStatus: updatedOrder.paymentStatus,
-          items: updatedOrder.items.map(item => ({
-            id: item.productId,
-            name: item.product.name,
-            quantity: item.quantity,
-            price: item.price
-          }))
-        },
-        restaurantId: updatedOrder.restaurantId,
-        timestamp: new Date(),
-        refund: refundResult ? {
-          id: refundResult.id,
-          status: refundResult.status,
-          amount: refundResult.amount
-        } : null
-      }
-
-      await emitWebSocketEvent('order-cancelled', orderEvent)
-      console.log(`[WebSocket] Pedido cancelado emitido para restaurante ${updatedOrder.restaurantId}:`, orderEvent.order.orderNumber)
-    } catch (socketError) {
-      console.error('[WebSocket] Erro ao emitir evento de cancelamento:', socketError)
-    }
+    // Emitir evento WebSocket para cancelamento removido - funcionalidade WebSocket foi removida do projeto
 
     return NextResponse.json({
       message: 'Pedido cancelado com sucesso',

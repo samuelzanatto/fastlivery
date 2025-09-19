@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 
 interface RestaurantStatus {
   isOpen: boolean
@@ -42,7 +42,18 @@ export function useRestaurantStatus({
       }
 
       const data = await response.json()
-      setStatus(data)
+      
+      // Só atualizar o estado se houve mudança real
+      setStatus(prevStatus => {
+        if (!prevStatus || 
+            prevStatus.isOpen !== data.isOpen ||
+            prevStatus.canAcceptOrders !== data.canAcceptOrders ||
+            prevStatus.message !== data.message ||
+            prevStatus.nextChange !== data.nextChange) {
+          return data
+        }
+        return prevStatus // Retornar o mesmo objeto para evitar re-render
+      })
       setError(null)
     } catch (err) {
       console.error('Erro ao buscar status do restaurante:', err)
@@ -58,17 +69,36 @@ export function useRestaurantStatus({
     fetchStatus()
   }, [fetchStatus])
 
-  // Polling periódico
+  // Polling periódico com otimização de visibilidade
   useEffect(() => {
     if (!enabled || refreshInterval <= 0) {
       return
     }
 
-    const interval = setInterval(() => {
-      fetchStatus()
-    }, refreshInterval)
+    const runPolling = () => {
+      // Só fazer polling se a página estiver visível
+      if (!document.hidden) {
+        fetchStatus()
+      }
+    }
 
-    return () => clearInterval(interval)
+    // Primeira execução imediata
+    const interval = setInterval(runPolling, refreshInterval)
+
+    // Listener para visibilidade da página
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Quando a página ficar visível novamente, fazer fetch imediato
+        fetchStatus()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [enabled, refreshInterval, fetchStatus])
 
   // Método para forçar atualização
@@ -77,10 +107,11 @@ export function useRestaurantStatus({
     fetchStatus()
   }, [fetchStatus])
 
-  return {
+  // Memoizar o retorno para evitar re-renders desnecessários
+  return useMemo(() => ({
     status,
     isLoading,
     error,
     refresh
-  }
+  }), [status, isLoading, error, refresh])
 }
