@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { PWAHeader } from '@/components/pwa-header'
-import { UserProfileSheet } from '@/components/user-profile-sheet'
-import { AddressFormBottomSheet } from '@/components/address-form-bottom-sheet'
+import { PWAHeader } from '@/components/layout/pwa-header'
+import { UserProfile } from '@/components/profile/unified-user-profile'
+import { AddressFormBottomSheet } from '@/components/forms/address-form-bottom-sheet'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -17,7 +17,7 @@ import {
   Home,
   Building2
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { notify } from '@/lib/notifications/notify'
 
 interface Address {
   id: string
@@ -61,11 +61,11 @@ export default function EnderecosPage() {
         const data = await response.json()
         setAddresses(data.addresses || [])
       } else {
-        toast.error('Erro ao carregar endereços')
+  notify('error', 'Erro ao carregar endereços')
       }
     } catch (error) {
       console.error('Erro ao carregar endereços:', error)
-      toast.error('Erro ao carregar endereços')
+  notify('error', 'Erro ao carregar endereços')
     } finally {
       setIsLoading(false)
     }
@@ -89,11 +89,11 @@ export default function EnderecosPage() {
         })
         
         if (response.ok) {
-          toast.success('Endereço atualizado com sucesso!')
+          notify('success', 'Endereço atualizado com sucesso!')
           await loadAddresses()
         } else {
           const error = await response.json()
-          toast.error(error.error || 'Erro ao atualizar endereço')
+          notify('error', error.error || 'Erro ao atualizar endereço')
         }
       } else {
         // Criar novo endereço
@@ -104,11 +104,11 @@ export default function EnderecosPage() {
         })
         
         if (response.ok) {
-          toast.success('Endereço adicionado com sucesso!')
+          notify('success', 'Endereço adicionado com sucesso!')
           await loadAddresses()
         } else {
           const error = await response.json()
-          toast.error(error.error || 'Erro ao adicionar endereço')
+          notify('error', error.error || 'Erro ao adicionar endereço')
         }
       }
       
@@ -116,7 +116,7 @@ export default function EnderecosPage() {
       setEditingAddress(null)
     } catch (error) {
       console.error('Erro ao salvar endereço:', error)
-      toast.error('Erro ao salvar endereço')
+  notify('error', 'Erro ao salvar endereço')
     } finally {
       setIsSaving(false)
     }
@@ -131,15 +131,15 @@ export default function EnderecosPage() {
       })
       
       if (response.ok) {
-        toast.success('Endereço principal definido!')
+  notify('success', 'Endereço principal definido!')
         await loadAddresses()
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Erro ao definir endereço principal')
+  notify('error', error.error || 'Erro ao definir endereço principal')
       }
     } catch (error) {
       console.error('Erro ao definir endereço principal:', error)
-      toast.error('Erro ao definir endereço principal')
+  notify('error', 'Erro ao definir endereço principal')
     }
   }
 
@@ -155,15 +155,15 @@ export default function EnderecosPage() {
       })
       
       if (response.ok) {
-        toast.success('Endereço excluído com sucesso!')
+  notify('success', 'Endereço excluído com sucesso!')
         await loadAddresses()
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Erro ao excluir endereço')
+  notify('error', error.error || 'Erro ao excluir endereço')
       }
     } catch (error) {
       console.error('Erro ao excluir endereço:', error)
-      toast.error('Erro ao excluir endereço')
+  notify('error', 'Erro ao excluir endereço')
     }
   }
 
@@ -390,7 +390,7 @@ export default function EnderecosPage() {
       </Sheet>
 
       {/* User Profile Sheet - Global */}
-      <UserProfileSheet />
+      <UserProfile mode="sheet" readOnly />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/utils/urls'
 
 /**
  * Endpoint para disparar verificação de timeouts via cron job
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Chamar o endpoint de verificação de timeout
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = getAppUrl()
     const apiKey = process.env.INTERNAL_API_KEY
     
     if (!apiKey) {

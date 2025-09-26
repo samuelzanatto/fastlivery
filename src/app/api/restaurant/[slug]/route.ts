@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
 
 export async function GET(
   request: NextRequest,
@@ -8,7 +8,7 @@ export async function GET(
 ) {
   try {
     const { slug } = await params
-    const restaurant = await prisma.restaurant.findFirst({
+    const business = await prisma.business.findFirst({
       where: { slug },
       select: {
         id: true,
@@ -29,10 +29,10 @@ export async function GET(
         phone: true
       }
     })
-    
-    if (!restaurant) {
+
+    if (!business) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
@@ -41,29 +41,29 @@ export async function GET(
     const rating = 4.5
 
     const publicData = {
-      id: restaurant.id,
-      slug: restaurant.slug || slug,
-      name: restaurant.name,
-      description: restaurant.description,
-      avatar: restaurant.avatar,
-      banner: restaurant.banner,
-      isOpen: restaurant.isOpen,
-      category: 'Restaurante', // TODO: Adicionar categoria ao modelo
+      id: business.id,
+      slug: business.slug || slug,
+      name: business.name,
+      description: business.description,
+      avatar: business.avatar,
+      banner: business.banner,
+      isOpen: business.isOpen,
+      category: 'Empresa', // TODO: Adicionar categoria ao modelo
       rating: rating,
-      deliveryTime: restaurant.deliveryTime,
-      address: restaurant.address,
-      openingHours: restaurant.openingHours,
-      acceptsDelivery: restaurant.acceptsDelivery,
-      acceptsPickup: restaurant.acceptsPickup,
-      acceptsDineIn: restaurant.acceptsDineIn,
-      deliveryFee: restaurant.deliveryFee,
-      minimumOrder: restaurant.minimumOrder,
-      phone: restaurant.phone
+      deliveryTime: business.deliveryTime,
+      address: business.address,
+      openingHours: business.openingHours,
+      acceptsDelivery: business.acceptsDelivery,
+      acceptsPickup: business.acceptsPickup,
+      acceptsDineIn: business.acceptsDineIn,
+      deliveryFee: business.deliveryFee,
+      minimumOrder: business.minimumOrder,
+      phone: business.phone
     }
 
     return NextResponse.json(publicData)
   } catch (error) {
-    console.error('Erro ao buscar restaurante:', error)
+    console.error('Erro ao buscar empresa:', error)
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }
@@ -90,43 +90,43 @@ export async function PUT(
 
   const { slug } = await params
     const data = await request.json()
-  // Buscar restaurante por slug
-  const restaurant = await prisma.restaurant.findFirst({ where: { slug } })
-    
-    if (!restaurant) {
+  // Buscar empresa por slug
+  const business = await prisma.business.findFirst({ where: { slug } })
+
+    if (!business) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
 
-    // TODO: Verificar se o usuário é o dono do restaurante
+    // TODO: Verificar se o usuário é o dono da empresa
     // Por enquanto, qualquer usuário logado pode editar
-    
-    // Atualizar dados do restaurante
-  const updatedRestaurant = await prisma.restaurant.update({
+
+    // Atualizar dados da empresa
+  const updatedBusiness = await prisma.business.update({
       where: {
-        id: restaurant.id
+        id: business.id
       },
       data: {
-        name: data.name || restaurant.name,
-        description: data.description || restaurant.description,
-        address: data.address || restaurant.address,
-        openingHours: data.openingHours || restaurant.openingHours,
-        isOpen: data.isOpen !== undefined ? data.isOpen : restaurant.isOpen,
-        deliveryTime: data.deliveryTime || restaurant.deliveryTime,
-        deliveryFee: data.deliveryFee || restaurant.deliveryFee,
-        minimumOrder: data.minimumOrder || restaurant.minimumOrder,
-        acceptsDelivery: data.acceptsDelivery !== undefined ? data.acceptsDelivery : restaurant.acceptsDelivery,
-        acceptsPickup: data.acceptsPickup !== undefined ? data.acceptsPickup : restaurant.acceptsPickup,
-        acceptsDineIn: data.acceptsDineIn !== undefined ? data.acceptsDineIn : restaurant.acceptsDineIn,
-        avatar: data.avatar || restaurant.avatar,
-        banner: data.banner || restaurant.banner,
-        phone: data.phone || restaurant.phone
+        name: data.name || business.name,
+        description: data.description || business.description,
+        address: data.address || business.address,
+        openingHours: data.openingHours || business.openingHours,
+        isOpen: data.isOpen !== undefined ? data.isOpen : business.isOpen,
+        deliveryTime: data.deliveryTime || business.deliveryTime,
+        deliveryFee: data.deliveryFee || business.deliveryFee,
+        minimumOrder: data.minimumOrder || business.minimumOrder,
+        acceptsDelivery: data.acceptsDelivery !== undefined ? data.acceptsDelivery : business.acceptsDelivery,
+        acceptsPickup: data.acceptsPickup !== undefined ? data.acceptsPickup : business.acceptsPickup,
+        acceptsDineIn: data.acceptsDineIn !== undefined ? data.acceptsDineIn : business.acceptsDineIn,
+        avatar: data.avatar || business.avatar,
+        banner: data.banner || business.banner,
+        phone: data.phone || business.phone
       },
       select: {
         id: true,
-  slug: true,
+        slug: true,
         name: true,
         description: true,
         avatar: true,
@@ -144,9 +144,9 @@ export async function PUT(
       }
     })
 
-    return NextResponse.json(updatedRestaurant)
+    return NextResponse.json(updatedBusiness)
   } catch (error) {
-    console.error('Erro ao atualizar restaurante:', error)
+    console.error('Erro ao atualizar empresa:', error)
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }

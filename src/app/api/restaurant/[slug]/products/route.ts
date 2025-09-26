@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
 
 export async function GET(
   request: NextRequest,
@@ -9,26 +9,26 @@ export async function GET(
     const { slug } = await params
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
-    // Buscar restaurante por slug
-    const restaurant = await prisma.restaurant.findFirst({
+    // Buscar empresa por slug
+    const business = await prisma.business.findFirst({
       where: { slug },
       select: {
         id: true,
         name: true
       }
     })
-    
-    if (!restaurant) {
+
+    if (!business) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
-    
-    // Buscar produtos do restaurante com suas categorias hierárquicas
+
+    // Buscar produtos da empresa com suas categorias hierárquicas
     const products = await prisma.product.findMany({
       where: {
-        restaurantId: restaurant.id,
+        businessId: business.id,
         isAvailable: true
       },
       include: {
@@ -77,7 +77,7 @@ export async function GET(
     // Buscar categorias hierárquicas (incluindo relação parent-child)
     const allCategories = await prisma.category.findMany({
       where: {
-        restaurantId: restaurant.id,
+        businessId: business.id,
         isActive: true,
         products: {
           some: {

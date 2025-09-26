@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
 
 // Throttle em memória (processo) para prevenir envios múltiplos em janela curta
 // Extendendo o tipo global para armazenar mapa de throttling
@@ -77,8 +77,7 @@ export async function POST(request: NextRequest) {
               email: emailLower,
               name: 'Usuário Temporário',
               emailVerified: false,
-              isActive: false,
-              userType: 'ADMIN' // Para cadastro de empresa
+              isActive: false
             }
           })
           console.log(`[DEBUG] Usuário temporário criado com sucesso`)

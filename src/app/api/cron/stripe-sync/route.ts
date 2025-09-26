@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { StripeSyncService } from '@/lib/stripe-sync'
+import { StripeSyncService } from '@/lib/payments/stripe-sync'
 
 // API Route para sincronização automática do Stripe via cron job
 export async function GET(request: NextRequest) {

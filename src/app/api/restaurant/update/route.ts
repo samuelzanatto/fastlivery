@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { computeIsOpenNow, parseOpeningHours, slugify } from '@/lib/utils-app'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
+import { slugify } from '@/lib/utils/formatters'
+import { computeIsOpenNow, parseOpeningHours } from '@/lib/utils/business-hours'
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -12,13 +13,13 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json()
 
-    // Encontrar restaurante do dono
-    const restaurant = await prisma.restaurant.findFirst({
+    // Encontrar empresa do dono
+    const business = await prisma.business.findFirst({
       where: { ownerId: session.user.id },
     })
 
-    if (!restaurant) {
-      return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
+    if (!business) {
+      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 })
     }
 
     // Preparar dados de atualização
@@ -69,16 +70,16 @@ export async function PATCH(request: NextRequest) {
       if (!proposed) {
         return NextResponse.json({ error: 'Slug inválido' }, { status: 400 })
       }
-      // Verifica unicidade: se já existe outro restaurante com o mesmo slug
-      const existing = await prisma.restaurant.findFirst({ where: { slug: proposed } })
-      if (existing && existing.id !== restaurant.id) {
+      // Verifica unicidade: se já existe outra empresa com o mesmo slug
+      const existing = await prisma.business.findFirst({ where: { slug: proposed } })
+      if (existing && existing.id !== business.id) {
         return NextResponse.json({ error: 'Este endereço já está em uso' }, { status: 409 })
       }
       data.slug = proposed
     }
 
-    const updated = await prisma.restaurant.update({
-      where: { id: restaurant.id },
+    const updated = await prisma.business.update({
+      where: { id: business.id },
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.description !== undefined ? { description: data.description ?? undefined } : {}),
@@ -117,9 +118,9 @@ export async function PATCH(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ ok: true, restaurant: updated })
+    return NextResponse.json({ ok: true, business: updated })
   } catch (error) {
-    console.error('Erro ao atualizar restaurante:', error)
+    console.error('Erro ao atualizar empresa:', error)
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

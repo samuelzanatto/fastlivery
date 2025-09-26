@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth'
 import { PrismaClient } from '@prisma/client'
-import SubscriptionService from '@/lib/subscription-service'
+import SubscriptionService from '@/lib/billing/subscription-service'
 
 const prisma = new PrismaClient()
 
@@ -19,26 +19,26 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Buscar restaurante do usuário
+    // Buscar empresa do usuário
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       include: {
-        ownedRestaurants: {
+        ownedBusinesses: {
           select: { id: true },
           take: 1,
         },
       },
     })
 
-    if (!user || !user.ownedRestaurants[0]) {
+    if (!user || !user.ownedBusinesses[0]) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
 
-    const restaurantId = user.ownedRestaurants[0].id
-    const usageOverview = await SubscriptionService.getUsageOverview(restaurantId)
+    const businessId = user.ownedBusinesses[0].id
+    const usageOverview = await SubscriptionService.getUsageOverview(businessId)
 
     return NextResponse.json(usageOverview)
   } catch (error) {

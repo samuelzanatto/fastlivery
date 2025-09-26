@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { auth } from '@/lib/auth'
-import { slugify } from '@/lib/utils-app'
+import { prisma } from '@/lib/database/prisma'
+import { auth } from '@/lib/auth/auth'
+import { slugify } from '@/lib/utils/formatters'
+import { ensureUserInDatabase } from '@/lib/auth/user-sync'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,37 +11,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
-  const { restaurantName, restaurantPhone, restaurantAddress, category } = await request.json()
+    console.log('[business/create] Sessão:', {
+      userId: session.user.id,
+      userEmail: session.user.email,
+      userName: session.user.name
+    })
 
-    if (!restaurantName || !restaurantPhone || !restaurantAddress) {
+    // Garantir que o usuário existe no banco Prisma antes de criar empresa
+    const userSynced = await ensureUserInDatabase(session.user)
+    if (!userSynced) {
+      console.error('[business/create] Falha ao sincronizar usuário com Prisma')
+      return NextResponse.json({ error: 'Erro ao sincronizar dados do usuário' }, { status: 500 })
+    }
+
+    // Verificar se o usuário existe no banco de dados (deve existir agora)
+    const userExists = await prisma.user.findUnique({
+      where: { id: session.user.id }
+    })
+
+    console.log('[business/create] Usuário existe?', userExists ? 'SIM' : 'NÃO')
+    
+    if (!userExists) {
+      console.error('[business/create] Usuário ainda não encontrado após sincronização:', session.user.id)
+      return NextResponse.json({ error: 'Usuário não encontrado no banco de dados' }, { status: 404 })
+    }
+
+  const { businessName, businessPhone, businessAddress, category } = await request.json()
+
+    if (!businessName || !businessPhone || !businessAddress) {
       return NextResponse.json({ error: 'Dados obrigatórios faltando' }, { status: 400 })
     }
 
-    // Verifica se já existe um restaurante do usuário
-    const existing = await prisma.restaurant.findFirst({ where: { ownerId: session.user.id } })
+    // Verifica se já existe uma empresa do usuário
+    const existing = await prisma.business.findFirst({ where: { ownerId: session.user.id } })
     if (existing) {
       return NextResponse.json({ id: existing.id, alreadyExists: true })
     }
 
-    const slug = slugify(restaurantName)
+    const slug = slugify(businessName)
     // garantir unicidade simples em caso de colisão
     let finalSlug = slug
     let suffix = 1
     while (true) {
-      const exists = await prisma.restaurant.findFirst({ where: { slug: finalSlug } })
+      const exists = await prisma.business.findFirst({ where: { slug: finalSlug } })
       if (!exists) break
       finalSlug = `${slug}-${suffix++}`
     }
 
-    const restaurant = await prisma.restaurant.create({
+    console.log('[business/create] Criando empresa com dados:', {
+      slug: finalSlug,
+      name: businessName,
+      ownerId: session.user.id,
+      phone: businessPhone,
+      address: businessAddress
+    })
+
+    const business = await prisma.business.create({
       data: {
         slug: finalSlug,
-        name: restaurantName,
-        email: `${session.user.email}-restaurant`,
+        name: businessName,
+        email: `${session.user.email}-business`,
         password: 'temporary',
-        phone: restaurantPhone,
-        address: restaurantAddress,
-        description: `${category || 'Restaurante'} criado via ZapLivery`,
+        phone: businessPhone,
+        address: businessAddress,
+        description: `${category || 'Empresa'} criado via FastLivery`,
         ownerId: session.user.id,
         isOpen: false,
         acceptsDelivery: true,
@@ -52,9 +86,11 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ id: restaurant.id })
+    console.log('[business/create] Empresa criada com sucesso:', business.id)
+
+    return NextResponse.json({ id: business.id })
   } catch (error) {
-    console.error('Erro ao criar restaurante:', error)
+    console.error('Erro ao criar empresa:', error)
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

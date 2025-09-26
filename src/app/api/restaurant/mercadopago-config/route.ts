@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { validateMercadoPagoCredentials } from '@/lib/mercadopago'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
+import { validateMercadoPagoCredentials } from '@/lib/payments/mercadopago'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    // Buscar restaurante do usuário
-    const restaurant = await prisma.restaurant.findFirst({
+    // Buscar empresa do usuário
+    const business = await prisma.business.findFirst({
       where: { ownerId: sessionResponse.user.id },
       select: {
         id: true,
@@ -23,16 +23,16 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    if (!restaurant) {
-      return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
+    if (!business) {
+      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 })
     }
 
-    const isTestMode = restaurant.mercadoPagoAccessToken?.startsWith('TEST-') || false
+    const isTestMode = business.mercadoPagoAccessToken?.startsWith('TEST-') || false
 
     return NextResponse.json({
-      configured: restaurant.mercadoPagoConfigured,
-      publicKey: restaurant.mercadoPagoPublicKey ? '****' + restaurant.mercadoPagoPublicKey.slice(-4) : null,
-      restaurantName: restaurant.name,
+      configured: business.mercadoPagoConfigured,
+      publicKey: business.mercadoPagoPublicKey ? '****' + business.mercadoPagoPublicKey.slice(-4) : null,
+      businessName: business.name,
       isTestMode
     })
   } catch (error) {
@@ -68,14 +68,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Buscar restaurante do usuário
-    const restaurant = await prisma.restaurant.findFirst({
+    // Buscar empresa do usuário
+    const business = await prisma.business.findFirst({
       where: { ownerId: sessionResponse.user.id },
       select: { id: true, name: true }
     })
 
-    if (!restaurant) {
-      return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
+    if (!business) {
+      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 })
     }
 
     // Validar credenciais com o Mercado Pago
@@ -90,8 +90,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Salvar credenciais no banco
-    await prisma.restaurant.update({
-      where: { id: restaurant.id },
+    await prisma.business.update({
+      where: { id: business.id },
       data: {
         mercadoPagoAccessToken: accessToken,
         mercadoPagoPublicKey: publicKey,
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    console.log(`Mercado Pago configurado para restaurante: ${restaurant.name}`)
+    console.log(`Mercado Pago configurado para empresa: ${business.name}`)
 
     return NextResponse.json({
       success: true,
@@ -118,19 +118,19 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    // Buscar restaurante do usuário
-    const restaurant = await prisma.restaurant.findFirst({
+    // Buscar empresa do usuário
+    const business = await prisma.business.findFirst({
       where: { ownerId: sessionResponse.user.id },
       select: { id: true }
     })
 
-    if (!restaurant) {
-      return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
+    if (!business) {
+      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 })
     }
 
     // Remover configuração do Mercado Pago
-    await prisma.restaurant.update({
-      where: { id: restaurant.id },
+    await prisma.business.update({
+      where: { id: business.id },
       data: {
         mercadoPagoAccessToken: null,
         mercadoPagoPublicKey: null,

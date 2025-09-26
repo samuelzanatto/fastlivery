@@ -21,9 +21,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { toast } from 'sonner'
+import { notify } from '@/lib/notifications/notify'
 import { cn } from '@/lib/utils'
-import { ImageType } from '@/lib/image-types'
+import { ImageType } from '@/lib/services/image-types'
 
 interface ImageRecord {
   id: string
@@ -101,14 +101,14 @@ export function ImageGallery({
       if (response.ok) {
         setImages(prev => prev.filter(img => img.id !== image.id))
         onImageDeleted?.(image.id)
-        toast.success('Imagem deletada com sucesso')
+  notify('success', 'Imagem deletada com sucesso')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Erro ao deletar imagem')
+  notify('error', error.error || 'Erro ao deletar imagem')
       }
     } catch (error) {
       console.error('Erro ao deletar imagem:', error)
-      toast.error('Erro ao deletar imagem')
+  notify('error', 'Erro ao deletar imagem')
     } finally {
       setDeleteDialogOpen(false)
       setImageToDelete(null)
@@ -117,7 +117,7 @@ export function ImageGallery({
 
   const handleCopyUrl = (url: string) => {
     navigator.clipboard.writeText(`${window.location.origin}${url}`)
-    toast.success('URL copiada para a área de transferência')
+  notify('success', 'URL copiada para a área de transferência')
   }
 
   const handleDownload = (image: ImageRecord) => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { PWAHeader } from '@/components/pwa-header'
+import { PWAHeader } from '@/components/layout/pwa-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { useSession } from '@/lib/auth-client'
+import { useSession } from '@/lib/auth/auth-client'
 import { 
   User,
   Mail,
@@ -20,7 +20,7 @@ import {
   X,
   Camera
 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { notify } from '@/lib/notifications/notify'
 
 export default function ContaPage() {
   const { data: session } = useSession()
@@ -49,10 +49,10 @@ export default function ContaPage() {
       // Simular API call
       await new Promise(resolve => setTimeout(resolve, 1000))
       
-      toast.success('Dados atualizados com sucesso!')
+  notify('success', 'Dados atualizados com sucesso!')
       setIsEditing(false)
     } catch {
-      toast.error('Erro ao atualizar dados')
+  notify('error', 'Erro ao atualizar dados')
     } finally {
       setIsLoading(false)
     }
@@ -279,7 +279,7 @@ export default function ContaPage() {
               className="w-full justify-start"
               onClick={() => window.location.href = '/favoritos'}
             >
-              Meus restaurantes favoritos
+              Minhas Empresas favoritas
             </Button>
           </CardContent>
         </Card>

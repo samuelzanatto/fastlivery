@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { StripeSyncService } from '@/lib/stripe-sync'
+import { auth } from '@/lib/auth/auth'
+import { StripeSyncService } from '@/lib/payments/stripe-sync'
 
 export async function POST(request: NextRequest) {
   try {

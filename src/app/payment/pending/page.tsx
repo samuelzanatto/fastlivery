@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { motion } from 'framer-motion'
-import { toast } from 'sonner'
+import { notify } from '@/lib/notifications/notify'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Clock, RefreshCw, ArrowLeft, CheckCircle, XCircle } from 'lucide-react'
@@ -19,8 +19,8 @@ function PaymentPendingContent() {
   useEffect(() => {
     console.log('Payment pending - ID:', paymentId, 'Status:', status)
     
-    // Exibir toast informativo
-    toast.info('Pagamento em processamento', {
+    // Exibir notificação informativa
+    notify('info', 'Pagamento em processamento', {
       description: 'Estamos verificando seu pagamento. Aguarde a confirmação.',
       duration: 5000,
     })
@@ -29,7 +29,7 @@ function PaymentPendingContent() {
   const checkPaymentStatus = async () => {
     setIsChecking(true)
     
-    const checkingToast = toast.loading('Verificando status do pagamento...')
+  const checkingToast = notify('loading', 'Verificando status do pagamento...')
     
     try {
       // Simular verificação do status
@@ -40,27 +40,27 @@ function PaymentPendingContent() {
       const randomStatus = Math.random()
       if (randomStatus > 0.7) {
         setPaymentStatus('approved')
-        toast.success('Pagamento aprovado!', { 
-          id: checkingToast,
+        notify('success', 'Pagamento aprovado!', { 
+          id: checkingToast as string,
           description: 'Seu pagamento foi confirmado com sucesso.' 
         })
       } else if (randomStatus < 0.3) {
         setPaymentStatus('rejected')
-        toast.error('Pagamento recusado', { 
-          id: checkingToast,
+        notify('error', 'Pagamento recusado', { 
+          id: checkingToast as string,
           description: 'Infelizmente seu pagamento foi recusado.' 
         })
       } else {
         setPaymentStatus('pending')
-        toast.info('Ainda processando', { 
-          id: checkingToast,
+        notify('info', 'Ainda processando', { 
+          id: checkingToast as string,
           description: 'Seu pagamento ainda está sendo processado. Tente novamente em alguns minutos.' 
         })
       }
     } catch (error) {
       console.error('Erro ao verificar status:', error)
-      toast.error('Erro ao verificar status', { 
-        id: checkingToast,
+      notify('error', 'Erro ao verificar status', { 
+        id: checkingToast as string,
         description: 'Não foi possível verificar o status do pagamento. Tente novamente.' 
       })
     } finally {

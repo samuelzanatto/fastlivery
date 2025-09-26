@@ -1,12 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/cron/payment-timeouts",
-      "schedule": "*/5 * * * *"
+      "path": "/api/cron/stripe-sync",
+      "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/cron/stripe-sync",
-      "schedule": "0 */6 * * *"
+      "path": "/api/cron/cleanup-verifications",
+      "schedule": "0 0 * * *"
     }
   ]
 }

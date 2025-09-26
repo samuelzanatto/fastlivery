@@ -1,31 +1,54 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth'
+import { checkRoleAccess, hasRouteAccess } from '@/lib/security/permission-cache'
+import { getAllowedOrigins } from '@/lib/utils/urls'
 
-// Define protected routes that require RESTAURANT_ADMIN authentication
+// Categorias de roles
+const PLATFORM_ROLES = new Set(['platformAdmin','platformSupport'])
+const BUSINESS_ROLES = new Set([
+  'businessOwner','businessAdmin','businessManager','businessStaff'
+])
+const CUSTOMER_ROLE = 'customer'
+
+// Define protected routes that require BUSINESS_ADMIN authentication
 const adminRoutes = [
   '/dashboard',
+  '/supplier-dashboard',
+  '/supplier-products',
+  '/supplier-orders',
+  '/supplier-partnerships', 
+  '/supplier-clients',
+  '/supplier-analytics',
+  '/supplier-billing',
+  '/supplier-subscription-manage',
+  '/supplier-settings',
+  '/supplier-support',
+  '/partnership-requests',
+  '/supplier-subscription',
   '/analytics',
   '/products',
   '/orders',
   '/customers',
   '/settings',
   '/tables',
-  '/waiter-orders', // Adicionada para alinhar proteção e evitar ser tratada como slug
   '/users', // Gestão de funcionários
   '/permissions', // Gestão de permissões
   '/test-payment',
-  '/checkout'
+  '/checkout',
+  '/categories',
+  '/additionals',
+  '/marketplace'
 ]
 
 // Define protected routes that require CUSTOMER authentication  
 const customerRoutes = ['/conta', '/enderecos', '/pedidos', '/favoritos']
 
 // Define auth routes (should redirect appropriately if already authenticated)
-const authRoutes = ['/login', '/register', '/signup', '/signin', '/customer-login', '/customer-signup']// Define public routes that should never be treated as restaurant slugs
+const authRoutes = ['/login', '/register', '/signup', '/signin', '/customer-login', '/customer-signup']// Define public routes that should never be treated as business slugs
 const publicRoutes = ['/payment', '/api', '/auth', '/about', '/contact', '/terms', '/privacy', '/test-subscription']
 
-// Function to check if a slug could be a restaurant slug
-function couldBeRestaurantSlug(pathname: string): boolean {
+// Function to check if a slug could be a business slug
+function couldBeBusinessSlug(pathname: string): boolean {
   const segments = pathname.split('/').filter(Boolean)
   
   // Must be exactly one segment (e.g., /pizzaria-do-joao)
@@ -46,14 +69,7 @@ function couldBeRestaurantSlug(pathname: string): boolean {
   return slugPattern.test(slug) && slug.length >= 3
 }
 
-const ALLOWED_ORIGINS = [
-  'http://localhost:3000',
-  'http://192.168.1.106:3000',
-  'https://sdk.mercadopago.com',
-  'https://api.mercadopago.com',
-  'https://secure.mlstatic.com',
-  process.env.NEXT_PUBLIC_APP_URL || ''
-].filter(Boolean)
+const ALLOWED_ORIGINS = getAllowedOrigins()
 
 function buildCorsHeaders(origin: string | null) {
   const allowOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ''
@@ -62,15 +78,22 @@ function buildCorsHeaders(origin: string | null) {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cookie, Set-Cookie',
     'Access-Control-Allow-Credentials': 'true',
     'Vary': 'Origin',
-    // Headers específicos para Mercado Pago
+    // Enhanced security headers
     'Content-Security-Policy': [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://secure.mlstatic.com https://*.mercadopago.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://secure.mlstatic.com https://*.mercadopago.com https://js.stripe.com",
       "style-src 'self' 'unsafe-inline' https://sdk.mercadopago.com https://secure.mlstatic.com https://*.mercadopago.com",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://api.mercadopago.com https://*.mercadopago.com https://sdk.mercadopago.com wss: ws:",
-      "frame-src 'self' https://*.mercadopago.com",
-    ].join('; ')
+      "connect-src 'self' https://api.mercadopago.com https://*.mercadopago.com https://sdk.mercadopago.com https://api.stripe.com wss: ws:",
+      "frame-src 'self' https://*.mercadopago.com https://js.stripe.com https://hooks.stripe.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'"
+    ].join('; '),
+    'X-Frame-Options': 'DENY',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=()'
   }
   if (allowOrigin) headers['Access-Control-Allow-Origin'] = allowOrigin
   return headers
@@ -79,6 +102,14 @@ function buildCorsHeaders(origin: string | null) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const origin = request.headers.get('origin')
+
+  // Log apenas navegações importantes em desenvolvimento
+  if (process.env.NODE_ENV === 'development' && 
+      !pathname.startsWith('/_next/') && 
+      !pathname.includes('.') &&
+      !request.headers.get('purpose')) {
+    console.log(`[MIDDLEWARE] ${pathname}`)
+  }
 
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, { status: 204, headers: buildCorsHeaders(origin) })
@@ -102,9 +133,9 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = adminRoutes.some(route => pathname.startsWith(route))
   const isCustomerRoute = customerRoutes.some(route => pathname.startsWith(route))
   const isAuthRoute = authRoutes.some(route => pathname.startsWith(route))
-  const isPossibleRestaurantSlug = couldBeRestaurantSlug(pathname)
-  
-  // Handle admin routes
+  const isPossibleBusinessSlug = couldBeBusinessSlug(pathname)
+
+  // Handle admin (business or platform) routes
   if (isAdminRoute) {
     if (!isAuthenticated) {
       const loginUrl = new URL('/login', request.url) // Corrigido: usar /login para admin
@@ -112,43 +143,52 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl)
     }
     
-    // CRITICAL SECURITY: Check if user is admin or employee (NOT customer)
-    if (user?.userType === 'CUSTOMER' || !['ADMIN', 'EMPLOYEE'].includes(user?.userType || '')) {
-      console.warn(`[SECURITY] Customer or invalid user type "${user?.userType}" tried to access admin route: ${pathname}`, {
-        userId: user?.id,
-        email: user?.email,
-        userType: user?.userType,
-        ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
-        userAgent: request.headers.get('user-agent')
+    // Redirecionar fornecedores do /dashboard para /supplier-dashboard
+    if (pathname === '/dashboard' && user?.role === 'supplierOwner') {
+      return NextResponse.redirect(new URL('/supplier-dashboard', request.url))
+    }
+    
+    const role = user?.role
+    // Usar sistema otimizado de verificação de permissões
+    const roleAccess = checkRoleAccess(role || undefined)
+    const hasSpecificRouteAccess = hasRouteAccess(role || undefined, pathname)
+    
+    if (!roleAccess.hasAdminRoutes || !hasSpecificRouteAccess) {
+      // Security log - use console.warn as secureLogger not available in middleware context
+      console.warn(`[SECURITY] Unauthorized admin route access`, {
+        pathname,
+        role,
+        hasUser: !!user?.id,
+        ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
       })
       return NextResponse.redirect(new URL('/login?error=access_denied', request.url))
     }
-    
-    // Check if user/restaurant is active
+
+    // Check if user/business is active
     if (!user?.isActive) {
       return NextResponse.redirect(new URL('/checkout/public', request.url))
     }
   }
   
-  // Handle customer routes
+  // Handle customer routes (somente customer simples)
   if (isCustomerRoute) {
     if (!isAuthenticated) {
       const loginUrl = new URL('/customer-login', request.url)
       loginUrl.searchParams.set('callbackUrl', pathname)
       return NextResponse.redirect(loginUrl)
     }
-    
-    // Check if user is customer
-    if (user?.userType !== 'CUSTOMER') {
+    if (user?.role !== CUSTOMER_ROLE) {
       return NextResponse.redirect(new URL('/customer-login?error=not_customer', request.url))
     }
   }
   
   // Handle auth routes - redirect if already authenticated
   if (isAuthRoute && isAuthenticated) {
-    if (['ADMIN', 'EMPLOYEE'].includes(user?.userType || '')) {
+    if (user?.role === 'supplierOwner') {
+      return NextResponse.redirect(new URL('/supplier-dashboard', request.url))
+    } else if (user?.role && (PLATFORM_ROLES.has(user.role) || BUSINESS_ROLES.has(user.role))) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
-    } else if (user?.userType === 'CUSTOMER') {
+    } else if (user?.role === CUSTOMER_ROLE) {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }
@@ -160,10 +200,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/customer-signup', request.url))
   }
   
-  // For possible restaurant slugs, add a header to help the page identify it's a restaurant route
+  // For possible business slugs, add a header to help the page identify it's a business route
   const response = NextResponse.next()
-  if (isPossibleRestaurantSlug) {
-    response.headers.set('x-restaurant-slug', pathname.substring(1))
+  if (isPossibleBusinessSlug) {
+    response.headers.set('x-business-slug', pathname.substring(1))
   }
   const corsHeaders = buildCorsHeaders(origin)
   Object.entries(corsHeaders).forEach(([k,v]) => response.headers.set(k,v))

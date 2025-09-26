@@ -1,22 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth'
+import { withRateLimit } from '@/lib/security/rate-limit'
+import { createAuthErrorResponse, handleBetterAuthError, validateEmail } from '@/lib/security/auth-errors'
 
-export async function POST(request: NextRequest) {
+const handleSendOTP = async (request: NextRequest) => {
   try {
     const sessionResponse = await auth.api.getSession({ headers: request.headers })
     if (!sessionResponse?.user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+      return createAuthErrorResponse('UNAUTHORIZED', null, {
+        route: '/api/employees/send-otp',
+        action: 'send_otp'
+      })
     }
 
     const { email } = await request.json()
 
-    if (!email) {
-      return NextResponse.json({ 
-        error: 'Email é obrigatório' 
-      }, { status: 400 })
-    }
-
-    console.log('[employees/send-otp] Enviando OTP para funcionário:', email)
+    // Validar email usando sistema padronizado
+    const emailValidation = validateEmail(email)
+    if (!emailValidation.valid) {
+      return createAuthErrorResponse(emailValidation.error!.code, emailValidation.error!.details, {
+        userId: sessionResponse.user.id,
+        email: sessionResponse.user.email,
+        route: '/api/employees/send-otp'
+      })
+    }    console.log('[employees/send-otp] Enviando OTP para funcionário:', email)
 
     // Enviar OTP usando better-auth
     try {
@@ -35,14 +42,28 @@ export async function POST(request: NextRequest) {
       })
 
     } catch (error) {
-      console.error('Erro ao enviar OTP via better-auth:', error)
-      return NextResponse.json({ 
-        error: 'Erro ao enviar código de verificação'
-      }, { status: 500 })
+      const authError = handleBetterAuthError(error, {
+        userId: sessionResponse.user.id,
+        email: email,
+        route: '/api/employees/send-otp',
+        action: 'send_verification_otp'
+      })
+      
+      return createAuthErrorResponse(authError.code, authError.details, {
+        userId: sessionResponse.user.id,
+        email: email,
+        route: '/api/employees/send-otp'
+      })
     }
 
   } catch (error) {
-    console.error('Erro ao processar envio de OTP:', error)
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+    console.error('Erro crítico ao processar envio de OTP:', error)
+    return createAuthErrorResponse('INTERNAL_ERROR', error, {
+      route: '/api/employees/send-otp',
+      action: 'critical_error'
+    })
   }
 }
+
+// Aplicar rate limiting para OTPs
+export const POST = withRateLimit('otp', handleSendOTP)

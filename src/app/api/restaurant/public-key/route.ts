@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,11 +7,11 @@ export async function GET(request: NextRequest) {
     const slug = searchParams.get('slug')
 
     if (!slug) {
-      return NextResponse.json({ error: 'Slug do restaurante é obrigatório' }, { status: 400 })
+      return NextResponse.json({ error: 'Slug da empresa é obrigatório' }, { status: 400 })
     }
 
-    // Buscar restaurante pelo slug
-    const restaurant = await prisma.restaurant.findFirst({
+    // Buscar empresa pelo slug
+    const business = await prisma.business.findFirst({
       where: { slug },
       select: {
         id: true,
@@ -21,15 +21,15 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    if (!restaurant) {
-      return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
+    if (!business) {
+      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 })
     }
 
     // Retornar chave pública se configurada
-    if (restaurant.mercadoPagoConfigured && restaurant.mercadoPagoPublicKey) {
+    if (business.mercadoPagoConfigured && business.mercadoPagoPublicKey) {
       return NextResponse.json({
-        publicKey: restaurant.mercadoPagoPublicKey,
-        restaurantName: restaurant.name,
+        publicKey: business.mercadoPagoPublicKey,
+        businessName: business.name,
         configured: true
       })
     }
@@ -37,12 +37,12 @@ export async function GET(request: NextRequest) {
     // Retornar indicando que não há configuração específica
     return NextResponse.json({
       publicKey: null,
-      restaurantName: restaurant.name,
+      businessName: business.name,
       configured: false,
-      message: 'Restaurante não possui configuração específica do Mercado Pago'
+      message: 'Empresa não possui configuração específica do Mercado Pago'
     })
   } catch (error) {
-    console.error('Erro ao buscar chave pública do restaurante:', error)
+    console.error('Erro ao buscar chave pública da empresa:', error)
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

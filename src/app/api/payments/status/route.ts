@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
 
 // GET /api/payments/status?order=<orderNumber>
 export async function GET(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         status: true,
         paymentStatus: true,
         stripeSessionId: true,
-        restaurantId: true,
+        businessId: true,
         payments: { select: { id: true, preferenceId: true, status: true, createdAt: true, type: true } }
       }
     })

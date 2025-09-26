@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { PWAHeader } from '@/components/pwa-header'
-import { UserProfileSheet } from '@/components/user-profile-sheet'
+import { PWAHeader } from '@/components/layout/pwa-header'
+import { UserProfile } from '@/components/profile/unified-user-profile'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Image from 'next/image'
@@ -14,7 +14,7 @@ import {
   ShoppingCart
 } from 'lucide-react'
 
-interface FavoriteRestaurant {
+interface FavoriteBusiness {
   id: string
   slug: string
   name: string
@@ -32,7 +32,7 @@ interface FavoriteRestaurant {
 }
 
 export default function FavoritosPage() {
-  const [favorites, setFavorites] = useState<FavoriteRestaurant[]>([])
+  const [favorites, setFavorites] = useState<FavoriteBusiness[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -72,8 +72,8 @@ export default function FavoritosPage() {
     }, 1000)
   }, [])
 
-  const handleRemoveFavorite = (restaurantId: string) => {
-    setFavorites(prev => prev.filter(fav => fav.id !== restaurantId))
+  const handleRemoveFavorite = (businessId: string) => {
+    setFavorites(prev => prev.filter(fav => fav.id !== businessId))
   }
 
   const handleOrderFrom = (slug: string) => {
@@ -125,51 +125,51 @@ export default function FavoritosPage() {
               Nenhum favorito ainda
             </h3>
             <p className="text-slate-600 mb-6">
-              Adicione restaurantes aos favoritos para encontrá-los rapidamente
+              Adicione empresas aos favoritos para encontrá-las rapidamente
             </p>
             <Button 
               onClick={() => window.history.back()}
               className="bg-orange-500 hover:bg-orange-600"
             >
-              Explorar restaurantes
+              Explorar empresas
             </Button>
           </div>
         ) : (
           <div className="space-y-3">
-            {favorites.map((restaurant) => (
-              <div key={restaurant.id} className="border border-slate-100 rounded-xl p-4 hover:border-slate-200 transition-colors">
+            {favorites.map((business) => (
+              <div key={business.id} className="border border-slate-100 rounded-xl p-4 hover:border-slate-200 transition-colors">
                 <div className="flex gap-4">
-                  {/* Avatar do restaurante */}
+                  {/* Avatar da empresa */}
                   <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {restaurant.avatar ? (
+                    {business.avatar ? (
                       <Image
-                        src={restaurant.avatar}
-                        alt={restaurant.name}
+                        src={business.avatar}
+                        alt={business.name}
                         width={64}
                         height={64}
                         className="w-full h-full object-cover"
                       />
                     ) : (
                       <span className="text-lg font-bold text-slate-600">
-                        {restaurant.name.slice(0, 2).toUpperCase()}
+                        {business.name.slice(0, 2).toUpperCase()}
                       </span>
                     )}
                   </div>
 
-                  {/* Informações do restaurante */}
+                  {/* Informações da empresa */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between mb-2">
                       <div className="min-w-0 flex-1">
                         <h3 className="font-medium text-slate-900 truncate">
-                          {restaurant.name}
+                          {business.name}
                         </h3>
                         <p className="text-sm text-slate-600 truncate">
-                          {restaurant.description}
+                          {business.description}
                         </p>
                       </div>
                       
                       <div className="flex items-center gap-2 ml-2">
-                        {restaurant.isOpen ? (
+                        {business.isOpen ? (
                           <Badge className="bg-green-100 text-green-700 text-xs border-green-200">
                             Aberto
                           </Badge>
@@ -182,7 +182,7 @@ export default function FavoritosPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemoveFavorite(restaurant.id)}
+                          onClick={() => handleRemoveFavorite(business.id)}
                           className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600"
                         >
                           <Heart className="h-4 w-4 fill-red-500 text-red-500" />
@@ -194,38 +194,38 @@ export default function FavoritosPage() {
                     <div className="flex items-center gap-4 text-xs text-slate-500 mb-2">
                       <div className="flex items-center gap-1">
                         <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                        <span>{restaurant.rating}</span>
+                        <span>{business.rating}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        <span>{restaurant.deliveryTime} min</span>
+                        <span>{business.deliveryTime} min</span>
                       </div>
-                      <span>Taxa: R$ {restaurant.deliveryFee.toFixed(2)}</span>
+                      <span>Taxa: R$ {business.deliveryFee.toFixed(2)}</span>
                     </div>
 
                     <div className="flex items-center gap-1 text-xs text-slate-500 mb-3">
                       <MapPin className="h-3 w-3" />
-                      <span className="truncate">{restaurant.address}</span>
+                      <span className="truncate">{business.address}</span>
                     </div>
 
                     <p className="text-xs text-slate-400 mb-3">
-                      Favoritado em {formatDate(restaurant.favoritesSince)}
+                      Favoritado em {formatDate(business.favoritesSince)}
                     </p>
 
                     {/* Ações */}
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-slate-500">
-                        Mínimo: R$ {restaurant.minimumOrder.toFixed(2)}
+                        Mínimo: R$ {business.minimumOrder.toFixed(2)}
                       </span>
                       
                       <Button
                         size="sm"
-                        onClick={() => handleOrderFrom(restaurant.slug)}
-                        disabled={!restaurant.isOpen}
+                        onClick={() => handleOrderFrom(business.slug)}
+                        disabled={!business.isOpen}
                         className="bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 h-8"
                       >
                         <ShoppingCart className="h-4 w-4 mr-1" />
-                        {restaurant.isOpen ? 'Pedir' : 'Fechado'}
+                        {business.isOpen ? 'Pedir' : 'Fechado'}
                       </Button>
                     </div>
                   </div>
@@ -237,7 +237,7 @@ export default function FavoritosPage() {
       </div>
 
       {/* User Profile Sheet - Global */}
-      <UserProfileSheet />
+      <UserProfile mode="sheet" readOnly />
     </div>
   )
 }

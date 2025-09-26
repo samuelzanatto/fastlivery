@@ -8,12 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { ModernEmailOtpVerification } from '@/components/modern-email-otp-verification'
+import { EmailOtpVerification } from '@/components/auth/unified-email-otp-verification'
 import { Store, Eye, EyeOff, Mail, User, Phone, Chrome, Check } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { signUp, signIn } from '@/lib/auth-client'
-import toast from 'react-hot-toast'
+import { signUp, signIn } from '@/lib/auth/auth-client'
+import { notify } from '@/lib/notifications/notify'
 
 const fadeIn = {
   initial: { opacity: 0, y: 20 },
@@ -54,7 +54,7 @@ export default function CustomerSignUpPage() {
       const message = urlParams.get('message')
       
       if (error) {
-        toast.error(decodeURIComponent(error), { duration: 6000 })
+        notify('error', decodeURIComponent(error), { duration: 6000 })
         
         const url = new URL(window.location.href)
         url.searchParams.delete('error')
@@ -62,7 +62,7 @@ export default function CustomerSignUpPage() {
       }
 
       if (message) {
-        toast.success(decodeURIComponent(message), { duration: 4000 })
+        notify('success', decodeURIComponent(message), { duration: 4000 })
         
         const url = new URL(window.location.href)
         url.searchParams.delete('message')
@@ -90,18 +90,18 @@ export default function CustomerSignUpPage() {
   // Função para iniciar verificação de email
   const handleStartEmailVerification = async () => {
     if (!formData.email) {
-      toast.error('Por favor, digite seu email primeiro')
+      notify('error', 'Por favor, digite seu email primeiro')
       return
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(formData.email)) {
-      toast.error('Por favor, digite um email válido')
+      notify('error', 'Por favor, digite um email válido')
       return
     }
 
     // Enviar OTP antes de abrir o dialog
-    const loadingToast = toast.loading('Enviando código de verificação...')
+    const loadingToast = notify('loading', 'Enviando código de verificação...')
     
     try {
       const response = await fetch('/api/customer/send-verification-otp', {
@@ -117,12 +117,12 @@ export default function CustomerSignUpPage() {
         throw new Error(error.error || 'Erro ao enviar código')
       }
 
-      toast.success('Código enviado para seu email!', { id: loadingToast })
+      notify('success', 'Código enviado para seu email!', { id: loadingToast })
       setShowEmailVerification(true)
       
     } catch (error) {
       console.error('Erro ao enviar OTP:', error)
-      toast.error(error instanceof Error ? error.message : 'Erro ao enviar código', { id: loadingToast })
+      notify('error', error instanceof Error ? error.message : 'Erro ao enviar código', { id: loadingToast })
     }
   }
 
@@ -130,7 +130,7 @@ export default function CustomerSignUpPage() {
   const handleEmailVerified = () => {
     setIsEmailVerified(true)
     setShowEmailVerification(false)
-    toast.success('Email verificado! Agora você pode finalizar seu cadastro.')
+    notify('success', 'Email verificado! Agora você pode finalizar seu cadastro.')
   }
 
   // Função para voltar da verificação
@@ -142,18 +142,18 @@ export default function CustomerSignUpPage() {
     e.preventDefault()
     
     if (formData.password !== formData.confirmPassword) {
-      toast.error('As senhas não coincidem')
+      notify('error', 'As senhas não coincidem')
       return
     }
 
     if (formData.password.length < 8) {
-      toast.error('A senha deve ter pelo menos 8 caracteres')
+      notify('error', 'A senha deve ter pelo menos 8 caracteres')
       return
     }
 
     // Verificação obrigatória de email
     if (!isEmailVerified) {
-      toast.error('Você precisa verificar seu email antes de continuar')
+      notify('error', 'Você precisa verificar seu email antes de continuar')
       handleStartEmailVerification()
       return
     }
@@ -171,31 +171,30 @@ export default function CustomerSignUpPage() {
       })
 
       if (error) {
-        toast.error(error.message || 'Erro ao criar conta')
+        notify('error', error.message || 'Erro ao criar conta')
         setIsLoading(false)
         return
       }
 
       if (data) {
-        // Atualizar campos adicionais via API
-        await fetch('/api/user/update-profile', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
+        // Atualizar campos adicionais via Server Action
+        try {
+          const { updateUserProfile } = await import('@/actions/users/profile')
+          await updateUserProfile({
             phone: formData.phone,
-            userType: 'CUSTOMER',
             emailVerified: true // Marca como verificado
           })
-        })
+        } catch (updateError) {
+          console.warn('Erro ao atualizar perfil adicional:', updateError)
+          // Não bloqueia o fluxo principal, apenas log
+        }
 
-        toast.success('Conta criada com sucesso!')
+        notify('success', 'Conta criada com sucesso!')
         router.push(callbackURL)
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro inesperado'
-      toast.error(errorMessage)
+      notify('error', errorMessage)
       setIsLoading(false)
     }
   }
@@ -212,7 +211,7 @@ export default function CustomerSignUpPage() {
       })
 
       if (error) {
-        toast.error('Erro no cadastro com Google')
+        notify('error', 'Erro no cadastro com Google')
         setIsGoogleLoading(false)
         return
       }
@@ -234,7 +233,7 @@ export default function CustomerSignUpPage() {
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro no cadastro com Google'
-      toast.error(errorMessage)
+      notify('error', errorMessage)
       setIsGoogleLoading(false)
     }
   }
@@ -242,7 +241,7 @@ export default function CustomerSignUpPage() {
   return (
     <>
       {/* Modal/Overlay de Verificação de Email */}
-      <ModernEmailOtpVerification
+      <EmailOtpVerification
         open={showEmailVerification}
         email={formData.email}
         onVerified={handleEmailVerified}
@@ -273,7 +272,7 @@ export default function CustomerSignUpPage() {
               >
                 <Store className="h-12 w-12 text-orange-500" />
               </motion.div>
-              <h1 className="text-3xl font-bold text-slate-800">ZapLivery</h1>
+              <h1 className="text-3xl font-bold text-slate-800">FastLivery</h1>
               <p className="text-slate-600 mt-2">Crie sua conta de cliente</p>
             </div>
 
@@ -534,10 +533,10 @@ export default function CustomerSignUpPage() {
               transition={{ duration: 0.6, delay: 0.4 }}
             >
               <h2 className="text-4xl font-bold mb-4">
-                Junte-se ao ZapLivery!
+                Junte-se ao FastLivery!
               </h2>
               <p className="text-xl text-white/90 mb-8 max-w-md">
-                Crie sua conta e tenha acesso aos melhores restaurantes da região com entregas rápidas e seguras.
+                Crie sua conta e tenha acesso aos melhores empresas da região com entregas rápidas e seguras.
               </p>
               <div className="flex flex-col space-y-4 text-white/90">
                 <div className="flex items-center space-x-3">

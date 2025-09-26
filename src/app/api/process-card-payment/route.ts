@@ -34,14 +34,14 @@ interface CardPaymentRequest {
     state: string
     cep: string
   }
-  restaurantId: string
+  businessId: string
   totalAmount: number
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: CardPaymentRequest = await request.json()
-    const { formData, items, customerInfo, selectedAddress, restaurantId } = body
+    const { formData, items, customerInfo, selectedAddress, businessId } = body
 
     // Configurar cliente do Mercado Pago
     const client = new MercadoPagoConfig({
@@ -67,9 +67,9 @@ export async function POST(request: NextRequest) {
         last_name: customerInfo.name.split(' ').slice(1).join(' ') || 'Cliente'
       },
       external_reference: orderNumber,
-      description: `Pedido ZapLivery - ${orderNumber}`,
+      description: `Pedido FastLivery - ${orderNumber}`,
       metadata: {
-        restaurant_id: restaurantId,
+        business_id: businessId,
         order_number: orderNumber,
         customer_name: customerInfo.name,
         customer_phone: customerInfo.phone,

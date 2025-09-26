@@ -1,7 +1,7 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { ReactNode } from 'react'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
 
 interface LayoutProps {
   children: ReactNode
@@ -10,29 +10,29 @@ interface LayoutProps {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const resolvedParams = await params
-  const restaurant = await prisma.restaurant.findFirst({
+  const business = await prisma.business.findFirst({
     where: { slug: resolvedParams.slug }
   })
 
-  if (!restaurant) {
+  if (!business) {
     return {
-      title: 'Restaurante não encontrado'
+      title: 'Empresa não encontrada'
     }
   }
 
   return {
-    title: restaurant.name,
-    description: restaurant.description || `${restaurant.name} - Delivery e Takeout`,
+    title: business.name,
+    description: business.description || `${business.name} - Delivery e Takeout`,
   }
 }
 
-export default async function RestaurantLayout({ children, params }: LayoutProps) {
+export default async function BusinessLayout({ children, params }: LayoutProps) {
   const resolvedParams = await params
-  const restaurant = await prisma.restaurant.findFirst({
+  const business = await prisma.business.findFirst({
     where: { slug: resolvedParams.slug }
   })
 
-  if (!restaurant) {
+  if (!business) {
     notFound()
   }
 

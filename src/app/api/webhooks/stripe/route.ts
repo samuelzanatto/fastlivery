@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { StripeSyncService } from '@/lib/stripe-sync'
-import { prisma } from '@/lib/prisma'
+import { StripeSyncService } from '@/lib/payments/stripe-sync'
+import { prisma } from '@/lib/database/prisma'
+import { SupplierSubscriptionStatus } from '@prisma/client'
+
+// Tipos estendidos para propriedades que não estão tipadas corretamente
+type StripeSubscriptionExtended = Stripe.Subscription & {
+  current_period_start: number
+  current_period_end: number
+  canceled_at?: number
+}
+
+type StripeInvoiceExtended = Stripe.Invoice & {
+  subscription?: string
+}
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-08-27.basil',
@@ -39,6 +51,24 @@ export async function POST(request: NextRequest) {
 
       case 'checkout.session.expired':
         await handleCheckoutExpired(event)
+        break
+
+      // Eventos de Assinatura
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        await handleSubscriptionEvent(event)
+        break
+
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event)
+        break
+
+      case 'invoice.payment_succeeded':
+        await handleInvoicePaymentSucceeded(event)
+        break
+
+      case 'invoice.payment_failed':
+        await handleInvoicePaymentFailed(event)
         break
 
       // Eventos de Produto
@@ -143,11 +173,11 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
     }
 
     // Criar um registro de pedido se necessário
-    if (session.metadata?.restaurantId && session.metadata?.cartItems) {
+    if (session.metadata?.businessId && session.metadata?.cartItems) {
       const cartItems = JSON.parse(session.metadata.cartItems)
       
       // Aqui você pode criar um registro do pedido no banco
-      console.log(`📝 Pedido criado para restaurante: ${session.metadata.restaurantId}`)
+      console.log(`📝 Pedido criado para empresa: ${session.metadata.businessId}`)
       console.log(`🛒 Items do carrinho:`, cartItems)
     }
   } catch (error) {
@@ -161,5 +191,119 @@ async function handleCheckoutExpired(event: Stripe.Event) {
     console.log(`⏰ Sessão de pagamento expirou: ${session.id}`)
   } catch (error) {
     console.error('❌ Erro ao processar checkout expirado:', error)
+  }
+}
+
+async function handleSubscriptionEvent(event: Stripe.Event) {
+  try {
+    const subscription = event.data.object as StripeSubscriptionExtended
+    console.log(`🔔 Evento de assinatura: ${event.type} - ${subscription.id}`)
+
+    // Buscar a assinatura no banco de dados usando o Stripe ID
+    const supplierSubscription = await prisma.supplierSubscription.findUnique({
+      where: { stripeSubscriptionId: subscription.id },
+      include: { supplier: true }
+    })
+
+    if (!supplierSubscription) {
+      console.log(`ℹ️ Assinatura não encontrada no banco: ${subscription.id}`)
+      return
+    }
+
+    // Mapear status do Stripe para nosso enum
+    const statusMap: Record<string, string> = {
+      'active': 'ACTIVE',
+      'canceled': 'CANCELLED',
+      'incomplete': 'INACTIVE',
+      'incomplete_expired': 'CANCELLED',
+      'past_due': 'PAST_DUE',
+      'trialing': 'TRIALING',
+      'unpaid': 'PAST_DUE'
+    }
+
+    const newStatus = statusMap[subscription.status] || 'INACTIVE'
+
+    // Atualizar a assinatura no banco
+    await prisma.supplierSubscription.update({
+      where: { id: supplierSubscription.id },
+      data: {
+        status: newStatus as SupplierSubscriptionStatus,
+        currentPeriodStart: new Date(subscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+        canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null
+      }
+    })
+
+    console.log(`✅ Assinatura atualizada: ${subscription.id} -> ${newStatus}`)
+    
+  } catch (error) {
+    console.error('❌ Erro ao processar evento de assinatura:', error)
+  }
+}
+
+async function handleSubscriptionDeleted(event: Stripe.Event) {
+  try {
+    const subscription = event.data.object as Stripe.Subscription
+    console.log(`🗑️ Assinatura deletada: ${subscription.id}`)
+
+    // Atualizar status para CANCELLED
+    await prisma.supplierSubscription.updateMany({
+      where: { stripeSubscriptionId: subscription.id },
+      data: {
+        status: 'CANCELLED',
+        canceledAt: new Date(),
+        cancelAtPeriodEnd: true
+      }
+    })
+
+    console.log(`✅ Assinatura marcada como cancelada: ${subscription.id}`)
+    
+  } catch (error) {
+    console.error('❌ Erro ao processar deleção de assinatura:', error)
+  }
+}
+
+async function handleInvoicePaymentSucceeded(event: Stripe.Event) {
+  try {
+    const invoice = event.data.object as StripeInvoiceExtended
+    console.log(`💰 Pagamento de fatura bem-sucedido: ${invoice.id}`)
+
+    if (invoice.subscription) {
+      // Atualizar status da assinatura para ACTIVE se pagamento foi bem-sucedido
+      await prisma.supplierSubscription.updateMany({
+        where: { stripeSubscriptionId: invoice.subscription },
+        data: {
+          status: 'ACTIVE'
+        }
+      })
+
+      console.log(`✅ Assinatura ativada após pagamento: ${invoice.subscription}`)
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao processar pagamento de fatura:', error)
+  }
+}
+
+async function handleInvoicePaymentFailed(event: Stripe.Event) {
+  try {
+    const invoice = event.data.object as StripeInvoiceExtended
+    console.log(`❌ Falha no pagamento de fatura: ${invoice.id}`)
+
+    if (invoice.subscription) {
+      // Atualizar status da assinatura para PAST_DUE
+      await prisma.supplierSubscription.updateMany({
+        where: { stripeSubscriptionId: invoice.subscription },
+        data: {
+          status: 'PAST_DUE'
+        }
+      })
+
+      console.log(`⚠️ Assinatura marcada como em atraso: ${invoice.subscription}`)
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao processar falha de pagamento:', error)
   }
 }

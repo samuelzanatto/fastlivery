@@ -1,64 +1,97 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, otp } = await request.json()
+    const body = await request.json()
+    console.log('[verify-verification-otp] Dados recebidos:', { 
+      email: body.email, 
+      otp: body.otp ? '***' : 'missing', 
+      verificationType: body.verificationType 
+    })
+    
+    const { email, otp, verificationType = 'signup' } = body
     
     if (!email || !otp) {
+      console.log('[verify-verification-otp] Dados inválidos:', { email: !!email, otp: !!otp })
       return NextResponse.json({ error: 'Email e código obrigatórios' }, { status: 400 })
     }
 
-    console.log('[verify-otp] Verificando OTP:', { email, otp })
+    // Validar formato do OTP (deve ser 6 dígitos)
+    if (!/^\d{6}$/.test(otp)) {
+      console.log('[verify-verification-otp] Formato de OTP inválido:', otp)
+      return NextResponse.json({ 
+        error: 'Código deve ter 6 dígitos numéricos.' 
+      }, { status: 400 })
+    }
+
+    console.log('[verify-verification-otp] Verificando OTP para:', email)
 
     // Buscar OTP na tabela Verification (como grandes plataformas fazem)
     const verification = await prisma.verification.findUnique({
       where: { id: email }
     })
 
+    console.log('[verify-verification-otp] Verificação encontrada:', !!verification)
+
     if (!verification) {
-      console.log('[verify-otp] Código não encontrado para:', email)
+      console.log('[verify-verification-otp] Código não encontrado para:', email)
       return NextResponse.json({ 
-        error: 'Código não encontrado. Solicite um novo código.' 
+        error: 'Código não encontrado. Solicite um novo código.',
+        code: 'OTP_NOT_FOUND'
       }, { status: 400 })
     }
 
     // Verificar expiração
     if (verification.expiresAt < new Date()) {
-      console.log('[verify-otp] Código expirado para:', email)
+      console.log('[verify-verification-otp] Código expirado para:', email)
       // Remover código expirado
-      await prisma.verification.delete({ where: { id: email } })
+      try {
+        await prisma.verification.delete({ where: { id: email } })
+      } catch (deleteError) {
+        console.warn('[verify-verification-otp] Erro ao remover código expirado:', deleteError)
+      }
       
       return NextResponse.json({ 
-        error: 'Código expirado. Solicite um novo código.' 
+        error: 'Código expirado. Solicite um novo código.',
+        code: 'OTP_EXPIRED'
       }, { status: 400 })
     }
 
     // Verificar código
     if (verification.value !== otp) {
-      console.log('[verify-otp] Código inválido para:', email, 'Esperado:', verification.value, 'Recebido:', otp)
+      console.log('[verify-verification-otp] Código inválido para:', email)
       return NextResponse.json({ 
-        error: 'Código inválido.' 
+        error: 'Código inválido.',
+        code: 'OTP_INVALID'
       }, { status: 400 })
     }
 
-    console.log('[verify-otp] Verificação bem-sucedida para:', email)
+    console.log('[verify-verification-otp] Verificação bem-sucedida para:', email)
 
     // Remover código usado (verificação única)
-    await prisma.verification.delete({ where: { id: email } })
+    try {
+      await prisma.verification.delete({ where: { id: email } })
+      console.log('[verify-verification-otp] Código removido após uso')
+    } catch (deleteError) {
+      console.warn('[verify-verification-otp] Erro ao remover código usado:', deleteError)
+      // Não falha o processo se não conseguiu remover
+    }
 
     return NextResponse.json({ 
       success: true, 
       message: 'Email verificado com sucesso',
-      verified: true
+      verified: true,
+      verificationType
     })
 
   } catch (error) {
-    console.error('[verify-otp] Erro:', error)
+    console.error('[verify-verification-otp] Erro:', error)
     
     return NextResponse.json({ 
       error: 'Erro interno na verificação',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      code: 'INTERNAL_ERROR',
+      details: process.env.NODE_ENV === 'development' && error instanceof Error ? error.message : undefined
     }, { status: 500 })
   }
 }

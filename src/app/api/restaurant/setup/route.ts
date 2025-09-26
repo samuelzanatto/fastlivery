@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/database/prisma'
+import { auth } from '@/lib/auth/auth'
+import { updateBusinessSchema } from '@/lib/validation/schemas'
+import { secureLogger } from '@/lib/security/sanitize'
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,11 +18,33 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validação rigorosa com Zod
+    const body = await request.json()
+    const validation = updateBusinessSchema.safeParse(body)
+    
+    if (!validation.success) {
+      secureLogger.warn('Dados inválidos no setup do restaurante', {
+        userId: session.user?.id,
+        errors: validation.error.issues,
+        ip: request.headers.get('x-forwarded-for')
+      })
+      
+      return NextResponse.json(
+        { 
+          error: 'Dados inválidos',
+          details: validation.error.issues.map(issue => ({
+            field: issue.path.join('.'),
+            message: issue.message
+          }))
+        },
+        { status: 400 }
+      )
+    }
+
     const {
       name,
       description,
       phone,
-      email,
       address,
       city,
       state,
@@ -30,46 +54,36 @@ export async function POST(request: NextRequest) {
       deliveryTime,
       acceptsDelivery,
       acceptsPickup,
-      acceptsDineIn,
-      openingHours
-    } = await request.json()
+      acceptsDineIn
+    } = validation.data
 
-    // Validações básicas
-    if (!name || !phone || !address || !city || !state || !zipCode) {
-      return NextResponse.json(
-        { error: 'Dados obrigatórios não fornecidos' },
-        { status: 400 }
-      )
-    }
-
-    // Buscar restaurante do usuário através do relacionamento
-    const restaurant = await prisma.restaurant.findFirst({
+    // Buscar empresa do usuário através do relacionamento
+    const business = await prisma.business.findFirst({
       where: { ownerId: session.user.id }
     })
 
-    if (!restaurant) {
+    if (!business) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado para este usuário' },
+        { error: 'Empresa não encontrada para este usuário' },
         { status: 404 }
       )
     }
 
-    // Atualizar restaurante
-    const updatedRestaurant = await prisma.restaurant.update({
-      where: { id: restaurant.id },
+    // Atualizar empresa
+    const updatedBusiness = await prisma.business.update({
+      where: { id: business.id },
       data: {
         name,
         description: description || null,
         phone,
-        email: email || null,
         address: `${address}, ${city}, ${state}, ${zipCode}`,
-        deliveryFee: deliveryFee ? parseFloat(deliveryFee) : 0,
-        minimumOrder: minimumOrder ? parseFloat(minimumOrder) : 0,
-        deliveryTime: deliveryTime ? parseInt(deliveryTime) : 30,
+        deliveryFee: deliveryFee || 0,
+        minimumOrder: minimumOrder || 0,
+        deliveryTime: deliveryTime || 30,
         acceptsDelivery: acceptsDelivery ?? true,
         acceptsPickup: acceptsPickup ?? true,
         acceptsDineIn: acceptsDineIn ?? true,
-        openingHours: openingHours ? JSON.stringify(openingHours) : null,
+        // openingHours será implementado posteriormente
         isActive: true // Ativar após setup completo
       }
     })
@@ -85,21 +99,21 @@ export async function POST(request: NextRequest) {
       await prisma.category.create({
         data: {
           ...category,
-          restaurantId: updatedRestaurant.id
+          businessId: updatedBusiness.id
         }
       })
     }
 
     return NextResponse.json({
-      message: 'Restaurante configurado com sucesso',
-      restaurant: {
-        id: updatedRestaurant.id,
-        name: updatedRestaurant.name,
-        isActive: updatedRestaurant.isActive
+      message: 'Empresa configurada com sucesso',
+      business: {
+        id: updatedBusiness.id,
+        name: updatedBusiness.name,
+        isActive: updatedBusiness.isActive
       }
     })
   } catch (error) {
-    console.error('Erro no setup do restaurante:', error)
+    console.error('Erro no setup da empresa:', error)
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }

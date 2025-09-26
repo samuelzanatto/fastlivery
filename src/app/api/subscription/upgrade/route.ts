@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { auth } from '@/lib/auth/auth'
 import { PrismaClient } from '@prisma/client'
-import SubscriptionService from '@/lib/subscription-service'
+import SubscriptionService from '@/lib/billing/subscription-service'
+import { getStripeCallbackUrls } from '@/lib/utils/urls'
 import Stripe from 'stripe'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -40,27 +41,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Buscar restaurante do usuário
+    // Buscar empresa do usuário
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       include: {
-        ownedRestaurants: {
+        ownedBusinesses: {
           select: { id: true },
           take: 1,
         },
       },
     })
 
-    if (!user || !user.ownedRestaurants[0]) {
+    if (!user || !user.ownedBusinesses[0]) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
 
-    const restaurantId = user.ownedRestaurants[0].id
-    const subscription = await SubscriptionService.getSubscription(restaurantId)
-    
+    const businessId = user.ownedBusinesses[0].id
+    const subscription = await SubscriptionService.getSubscription(businessId)
+
     if (!subscription) {
       return NextResponse.json(
         { error: 'Assinatura não encontrada' },
@@ -80,10 +81,9 @@ export async function POST(request: NextRequest) {
             quantity: 1,
           },
         ],
-  success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard?upgrade=success`,
-  cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard?upgrade=cancelled`,
+  ...getStripeCallbackUrls('subscription'),
         metadata: {
-          restaurantId,
+          businessId,
           planId,
           action: 'upgrade',
         },
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     // Atualizar no banco de dados
     await SubscriptionService.upgradePlan(
-      restaurantId, 
+      businessId, 
       planId, 
       STRIPE_PRICE_IDS[planId as keyof typeof STRIPE_PRICE_IDS]
     )

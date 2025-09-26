@@ -10,19 +10,19 @@ interface OrderDetails {
   id: string
   orderNumber: string
   customerName: string
-  customerEmail: string
+  customerEmail: string | null
   total: number
   paymentStatus: string
   status: string
-  paymentMethod: string
+  paymentMethod: string | null
   items: Array<{
     quantity: number
     price: number
-    product?: { name: string }
+    product?: { name: string } | null
   }>
   subtotal: number
   deliveryFee: number
-  createdAt: string
+  createdAt: string | Date
 }
 
 function CheckoutSuccessPageContent() {
@@ -52,14 +52,14 @@ function CheckoutSuccessPageContent() {
 
   const fetchOrderDetails = async (orderNum: string) => {
     try {
-      const response = await fetch(`/api/orders/by-number/${orderNum}`)
+      const { getOrderByNumber } = await import('@/actions/orders/orders')
+      const result = await getOrderByNumber(orderNum)
       
-      if (!response.ok) {
-        throw new Error('Pedido não encontrado')
+      if (!result.success) {
+        throw new Error(result.error || 'Pedido não encontrado')
       }
       
-      const data = await response.json()
-      setOrderDetails(data)
+      setOrderDetails(result.data)
     } catch (err) {
       console.error('Erro ao buscar pedido:', err)
       setError('Não foi possível carregar os detalhes do pedido')

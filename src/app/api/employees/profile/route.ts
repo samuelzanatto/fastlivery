@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,17 +10,17 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const restaurantId = searchParams.get('restaurantId')
+    const businessId = searchParams.get('businessId')
 
-    if (!restaurantId) {
-      return NextResponse.json({ error: 'restaurantId obrigatório' }, { status: 400 })
+    if (!businessId) {
+      return NextResponse.json({ error: 'businessId obrigatório' }, { status: 400 })
     }
 
     // Buscar perfil de funcionário do usuário logado
     const employeeProfile = await prisma.employeeProfile.findFirst({
       where: {
         userId: sessionResponse.user.id,
-        restaurantId,
+        businessId,
         isActive: true
       },
       include: {

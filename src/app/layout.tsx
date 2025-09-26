@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
-import { ToastProvider } from "@/components/providers/toast-provider";
+import { SonnerToaster } from "@/components/providers/sonner-toaster";
 import { PageTransitionProvider } from "@/components/providers/page-transition-provider";
 import "./globals.css";
 
@@ -11,26 +11,26 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "ZapLivery - Sistema de Delivery Inteligente",
+  title: "FastLivery - Sistema de Delivery Inteligente",
   description: "Automatize seu delivery com IA e maximize seus resultados",
-  applicationName: "ZapLivery",
+  applicationName: "FastLivery",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "ZapLivery",
+    title: "FastLivery",
   },
   formatDetection: {
     telephone: false,
   },
   openGraph: {
     type: "website",
-    siteName: "ZapLivery",
-    title: "ZapLivery - Sistema de Delivery Inteligente",
+    siteName: "FastLivery",
+    title: "FastLivery - Sistema de Delivery Inteligente",
     description: "Automatize seu delivery com IA e maximize seus resultados",
   },
   twitter: {
     card: "summary",
-    title: "ZapLivery",
+    title: "FastLivery",
     description: "Sistema de Delivery Inteligente com IA",
   },
   icons: {
@@ -58,7 +58,7 @@ export default function RootLayout({
     <html lang="pt-BR" className="md:scrollbar-auto scrollbar-hide">
       <head>
         {/* Basic Meta Tags */}
-        <meta name="application-name" content="ZapLivery" />
+        <meta name="application-name" content="FastLivery" />
         <meta name="format-detection" content="telephone=no" />
         <meta name="msapplication-TileColor" content="#1f2937" />
         <meta name="msapplication-tap-highlight" content="no" />
@@ -103,7 +103,8 @@ export default function RootLayout({
         <PageTransitionProvider>
           {children}
         </PageTransitionProvider>
-        <ToastProvider />
+  {/* Provider sonner para toasts */}
+        <SonnerToaster />
       </body>
     </html>
   );

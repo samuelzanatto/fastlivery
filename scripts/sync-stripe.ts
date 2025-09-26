@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { StripeSyncService } from '../src/lib/stripe-sync'
+import { StripeSyncService } from '../src/lib/payments/stripe-sync'
 
 async function syncStripe() {
   try {

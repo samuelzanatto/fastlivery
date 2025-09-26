@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
+import { getCachedSession } from '@/lib/security/session-cache'
 
 export async function GET(request: NextRequest) {
   try {
-    // Verificar autenticação usando Better Auth
-    const session = await auth.api.getSession({
-      headers: request.headers
-    })
+    // Verificar autenticação usando cache para melhor performance
+    const session = await getCachedSession(request.headers)
     
     if (!session?.user) {
       return NextResponse.json(
@@ -16,8 +14,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Buscar restaurante do usuário
-    const restaurant = await prisma.restaurant.findFirst({
+    // Buscar empresa do usuário
+    const business = await prisma.business.findFirst({
       where: { ownerId: session.user.id },
       select: {
         id: true,
@@ -33,9 +31,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    if (!restaurant) {
+    if (!business) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
@@ -49,7 +47,7 @@ export async function GET(request: NextRequest) {
     // Pedidos de hoje
     const todayOrders = await prisma.order.findMany({
       where: {
-        restaurantId: restaurant.id,
+        businessId: business.id,
         createdAt: {
           gte: today,
           lt: tomorrow
@@ -72,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     // Pedidos recentes (últimos 10)
     const recentOrders = await prisma.order.findMany({
-      where: { restaurantId: restaurant.id },
+      where: { businessId: business.id },
       orderBy: { createdAt: 'desc' },
       take: 10,
       include: {
@@ -106,10 +104,10 @@ export async function GET(request: NextRequest) {
         pendingOrders
       },
       recentOrders: formattedOrders,
-      restaurant: {
-        name: restaurant.name,
-        isOpen: restaurant.isOpen,
-        plan: restaurant.subscription?.planId || 'free'
+      business: {
+        name: business.name,
+        isOpen: business.isOpen,
+        plan: business.subscription?.planId || 'free'
       }
     })
 

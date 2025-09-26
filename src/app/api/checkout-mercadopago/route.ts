@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { createMercadoPagoService, CartItem, CustomerInfo } from '@/lib/mercadopago'
+import { prisma } from '@/lib/database/prisma'
+import { createMercadoPagoService, CartItem, CustomerInfo } from '@/lib/payments/mercadopago'
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
       customerInfo, 
       _addressInfo,
       paymentMethod,
-      restaurantSlug,
+      businessSlug,
       _amount,
       _formData
     }: {
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       customerInfo: CustomerInfo
       _addressInfo?: unknown
       paymentMethod: 'pix' | 'credit_card' | 'debit_card'
-      restaurantSlug: string
+      businessSlug: string
       _amount?: number
       _formData?: unknown
     } = await request.json()
@@ -25,21 +25,21 @@ export async function POST(request: NextRequest) {
     console.log('Dados recebidos no checkout Mercado Pago:', {
       itemsCount: items.length,
       paymentMethod,
-      restaurantSlug,
+      businessSlug,
       customerEmail: customerInfo.email
     })
 
     // Validar dados obrigatórios
-    if (!items || !customerInfo || !paymentMethod || !restaurantSlug) {
+    if (!items || !customerInfo || !paymentMethod || !businessSlug) {
       return NextResponse.json(
-        { error: 'Dados obrigatórios: items, customerInfo, paymentMethod, restaurantSlug' },
+        { error: 'Dados obrigatórios: items, customerInfo, paymentMethod, businessSlug' },
         { status: 400 }
       )
     }
 
-    // Buscar informações do restaurante pelo slug
-    const restaurant = await prisma.restaurant.findFirst({
-      where: { slug: restaurantSlug },
+    // Buscar informações da empresa pelo slug
+    const business = await prisma.business.findFirst({
+      where: { slug: businessSlug },
       select: { 
         id: true, 
         name: true, 
@@ -51,24 +51,24 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    if (!restaurant) {
-      return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
+    if (!business) {
+      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 })
     }
 
-    if (!restaurant.isActive) {
-      return NextResponse.json({ error: 'Restaurante inativo' }, { status: 400 })
+    if (!business.isActive) {
+      return NextResponse.json({ error: 'Empresa inativa' }, { status: 400 })
     }
 
-    if (!restaurant.mercadoPagoConfigured || !restaurant.mercadoPagoAccessToken) {
+    if (!business.mercadoPagoConfigured || !business.mercadoPagoAccessToken) {
       return NextResponse.json({ 
-        error: 'Mercado Pago não configurado para este restaurante' 
+        error: 'Mercado Pago não configurado para esta empresa' 
       }, { status: 400 })
     }
 
-    // Criar instância do serviço Mercado Pago usando credenciais do restaurante
+    // Criar instância do serviço Mercado Pago usando credenciais da empresa
     let mercadoPagoService
     try {
-      mercadoPagoService = await createMercadoPagoService(restaurant.id)
+      mercadoPagoService = await createMercadoPagoService(business.id)
     } catch (error) {
       console.error('Erro ao criar serviço Mercado Pago:', error)
       return NextResponse.json({ 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     // Calcular valores
     const subtotal = items.reduce((acc: number, item: CartItem) => acc + (item.price * item.quantity), 0)
-    const deliveryFee = restaurant.deliveryFee || 0
+    const deliveryFee = business.deliveryFee || 0
     const finalTotal = subtotal + deliveryFee
 
     // Gerar número único do pedido
@@ -88,13 +88,13 @@ export async function POST(request: NextRequest) {
           // Criar pedido no banco de dados
     const order = await prisma.order.create({
       data: {
-        restaurantId: restaurant.id,
+        businessId: business.id,
         orderNumber: orderNumber,
         type: 'DELIVERY', // Assumindo delivery como padrão
         status: 'PENDING',
         total: finalTotal,
         subtotal: subtotal,
-        deliveryFee: restaurant.deliveryFee || 0,
+        deliveryFee: business.deliveryFee || 0,
         customerName: customerInfo.name,
         customerPhone: customerInfo.phone,
         customerEmail: customerInfo.email,
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         items,
         customerInfo,
         paymentMethod,
-        restaurantId: restaurant.id,
+        businessId: business.id,
         orderNumber: order.orderNumber
       }
 

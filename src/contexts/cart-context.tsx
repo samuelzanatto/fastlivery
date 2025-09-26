@@ -16,7 +16,7 @@ export interface CartItem {
   image?: string
   category: string
   quantity: number
-  restaurantId: string
+  businessId: string
   selectedOptions?: SelectedOptions
   optionsText?: string // Texto descritivo das opções selecionadas
 }
@@ -39,7 +39,7 @@ export interface CartContextType {
     finalPrice: number,
     image: string | undefined,
     category: string,
-    restaurantId: string,
+    businessId: string,
     selectedOptions: SelectedOptions,
     optionsText: string,
     quantity?: number
@@ -85,7 +85,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     finalPrice: number,
     image: string | undefined,
     category: string,
-    restaurantId: string,
+    businessId: string,
     selectedOptions: SelectedOptions,
     optionsText: string,
     quantity: number = 1
@@ -113,7 +113,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         image,
         category,
         quantity,
-        restaurantId,
+        businessId,
         selectedOptions,
         optionsText
       }]

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import SubscriptionService from '@/lib/subscription-service'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
+import SubscriptionService from '@/lib/billing/subscription-service'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,11 +16,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Buscar restaurante do usuário
+    // Buscar empresa do usuário
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       include: {
-        ownedRestaurants: {
+        ownedBusinesses: {
           include: {
             subscription: true
           },
@@ -29,19 +29,19 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    if (!user || !user.ownedRestaurants[0]) {
+    if (!user || !user.ownedBusinesses[0]) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
 
-    const restaurant = user.ownedRestaurants[0]
+    const business = user.ownedBusinesses[0]
     
     // Se não tem assinatura, criar uma básica
-    if (!restaurant.subscription) {
+    if (!business.subscription) {
       const newSubscription = await SubscriptionService.createSubscription(
-        restaurant.id,
+        business.id,
         'basic',
         'price_basic', // substituir pelo ID real do Stripe
         undefined,
@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      planId: restaurant.subscription.planId,
-      status: restaurant.subscription.status,
+      planId: business.subscription.planId,
+      status: business.subscription.status,
       hasSubscription: true,
       isNew: false
     })

@@ -6,7 +6,7 @@ import { Upload, X, FileImage, Loader2, CheckCircle2, AlertCircle } from 'lucide
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { ImageType } from '@/lib/image-types'
+import { ImageType } from '@/lib/services/image-types'
 
 interface ImageUploadProps {
   entityId: string

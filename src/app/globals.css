@@ -136,6 +136,27 @@ html {
   display: none;  /* Chrome, Safari and Opera */
 }
 
+/* Esconder scrollbar globalmente para layout limpo */
+* {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+*::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Mantém funcionalidade de scroll mas remove visual */
+html, body {
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  display: none;
+}
+
 /* Esconder barra de rolagem no mobile */
 @media (max-width: 768px) {
   body {

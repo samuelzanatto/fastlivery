@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { checkLimit, incrementUsageAfterCreate, decrementUsageAfterDelete, LimitError } from '@/lib/limit-middleware'
+import { auth } from '@/lib/auth/auth'
+import { checkLimit, incrementUsageAfterCreate, decrementUsageAfterDelete, LimitError } from '@/lib/security/limit-middleware'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -21,28 +21,28 @@ export async function POST(request: NextRequest) {
 
     const { name, description, price, categoryId } = await request.json()
 
-    // Buscar restaurante do usuário
+    // Buscar empresa do usuário
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       include: {
-        ownedRestaurants: {
+        ownedBusinesses: {
           select: { id: true },
           take: 1,
         },
       },
     })
 
-    if (!user || !user.ownedRestaurants[0]) {
+    if (!user || !user.ownedBusinesses[0]) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
 
-    const restaurantId = user.ownedRestaurants[0].id
+    const businessId = user.ownedBusinesses[0].id
 
     // Verificar limite antes de criar produto
-    await checkLimit(restaurantId, 'product')
+    await checkLimit(businessId, 'product')
 
     // Criar produto
     const product = await prisma.product.create({
@@ -51,12 +51,12 @@ export async function POST(request: NextRequest) {
         description,
         price,
         categoryId,
-        restaurantId,
+        businessId,
       },
     })
 
     // Incrementar contador de uso
-    await incrementUsageAfterCreate(restaurantId, 'product')
+    await incrementUsageAfterCreate(businessId, 'product')
 
     return NextResponse.json(product, { status: 201 })
   } catch (error) {
@@ -103,31 +103,31 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Buscar restaurante do usuário
+    // Buscar empresa do usuário
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       include: {
-        ownedRestaurants: {
+        ownedBusinesses: {
           select: { id: true },
           take: 1,
         },
       },
     })
 
-    if (!user || !user.ownedRestaurants[0]) {
+    if (!user || !user.ownedBusinesses[0]) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Empresa não encontrada' },
         { status: 404 }
       )
     }
 
-    const restaurantId = user.ownedRestaurants[0].id
+    const businessId = user.ownedBusinesses[0].id
 
-    // Verificar se o produto pertence ao restaurante do usuário
+    // Verificar se o produto pertence à empresa do usuário
     const product = await prisma.product.findFirst({
       where: {
         id: productId,
-        restaurantId,
+        businessId,
       },
     })
 
@@ -144,7 +144,7 @@ export async function DELETE(request: NextRequest) {
     })
 
     // Decrementar contador de uso
-    await decrementUsageAfterDelete(restaurantId, 'product')
+    await decrementUsageAfterDelete(businessId, 'product')
 
     return NextResponse.json({ success: true })
   } catch (error) {

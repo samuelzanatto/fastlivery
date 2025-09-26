@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import SubscriptionService from '@/lib/subscription-service'
+import SubscriptionService from '@/lib/billing/subscription-service'
 
 export async function POST(request: NextRequest) {
   try {

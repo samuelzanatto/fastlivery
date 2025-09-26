@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
 
 export async function PUT(
   request: NextRequest,
@@ -17,15 +17,15 @@ export async function PUT(
     // Buscar funcionário
     const employee = await prisma.employeeProfile.findUnique({
       where: { id },
-      include: { restaurant: { select: { ownerId: true } } }
+      include: { business: { select: { ownerId: true } } }
     })
 
     if (!employee) {
       return NextResponse.json({ error: 'Funcionário não encontrado' }, { status: 404 })
     }
 
-    // Verificar se usuário é dono do restaurante
-    if (employee.restaurant.ownerId !== sessionResponse.user.id) {
+    // Verificar se usuário é dono da empresa
+    if (employee.business.ownerId !== sessionResponse.user.id) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
@@ -87,15 +87,15 @@ export async function DELETE(
     // Buscar funcionário
     const employee = await prisma.employeeProfile.findUnique({
       where: { id },
-      include: { restaurant: { select: { ownerId: true } } }
+      include: { business: { select: { ownerId: true } } }
     })
 
     if (!employee) {
       return NextResponse.json({ error: 'Funcionário não encontrado' }, { status: 404 })
     }
 
-    // Verificar se usuário é dono do restaurante
-    if (employee.restaurant.ownerId !== sessionResponse.user.id) {
+    // Verificar se usuário é dono da empresa
+    if (employee.business.ownerId !== sessionResponse.user.id) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 

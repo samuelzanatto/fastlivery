@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
 
 export async function GET() {
   try {
-    const restaurants = await prisma.restaurant.findMany({
+    const businesses = await prisma.business.findMany({
       select: {
         id: true,
         name: true,
@@ -16,9 +16,9 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ restaurants })
+    return NextResponse.json({ businesses })
   } catch (error) {
-    console.error('Erro ao buscar restaurantes:', error)
+    console.error('Erro ao buscar empresas:', error)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // Mock database - substituir por banco real
-const mockRestaurants = [
+const mockBusinesses = [
   {
     id: '1',
     slug: 'pizzaria-do-joao',
     name: 'Pizzaria do João',
     description: 'As melhores pizzas da cidade com ingredientes frescos e massa artesanal',
-    avatar: '/placeholder-restaurant.jpg',
+    avatar: '/placeholder-business.jpg',
     banner: '/placeholder-banner.jpg',
     isOpen: true,
     category: 'Pizzaria',
@@ -29,8 +29,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const category = searchParams.get('category')
-    
-    let restaurants = mockRestaurants.map(r => ({
+
+    let businesses = mockBusinesses.map(r => ({
       id: r.id,
       slug: r.slug,
       name: r.name,
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Filtrar por busca
     if (search) {
       const searchLower = search.toLowerCase()
-      restaurants = restaurants.filter(r => 
+      businesses = businesses.filter(r => 
         r.name.toLowerCase().includes(searchLower) ||
         r.description.toLowerCase().includes(searchLower) ||
         r.category.toLowerCase().includes(searchLower)
@@ -61,15 +61,15 @@ export async function GET(request: NextRequest) {
     
     // Filtrar por categoria
     if (category) {
-      restaurants = restaurants.filter(r => r.category === category)
+      businesses = businesses.filter(r => r.category === category)
     }
     
     return NextResponse.json({
-      restaurants,
-      total: restaurants.length
+      businesses,
+      total: businesses.length
     })
   } catch (error) {
-    console.error('Erro ao buscar restaurantes:', error)
+    console.error('Erro ao buscar empresas:', error)
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }

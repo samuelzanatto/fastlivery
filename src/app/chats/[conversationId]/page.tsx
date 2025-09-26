@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { PWAHeader } from '@/components/pwa-header'
+import { PWAHeader } from '@/components/layout/pwa-header'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useSession } from '@/lib/auth-client'
+import { useSession } from '@/lib/auth/auth-client'
+import { useChatRealtime } from '@/hooks/realtime/use-supabase-realtime'
+import { getConversationDetails, sendMessage } from '@/actions/chats/chats'
 import { 
   MessageCircle,
   Send,
@@ -18,19 +20,20 @@ import {
 interface ChatMessage {
   id: string
   content: string
-  senderType: 'CUSTOMER' | 'RESTAURANT'
+  senderType: 'CUSTOMER' | 'BUSINESS'
   createdAt: string
   isRead: boolean
+  senderId?: string
 }
 
 interface ConversationDetails {
   id: string
-  restaurant: {
+  business: {
     id: string
     name: string
     slug: string
-    profileImage?: string
-    phone?: string
+    profileImage?: string | null
+    phone?: string | null
   }
   messages: ChatMessage[]
 }
@@ -47,6 +50,30 @@ export default function ChatPage() {
   
   const conversationId = params.conversationId as string
 
+  // Hook de chat realtime
+  const { 
+    chatConnected: _chatConnected
+  } = useChatRealtime({
+    conversationId,
+    userId: session?.user?.id || '',
+    onNewMessage: (message) => {
+      console.log('📨 Nova mensagem via realtime:', message)
+      setConversation(prev => prev ? {
+        ...prev,
+        messages: [...prev.messages, message]
+      } : prev)
+    },
+    onMessageRead: (messageId) => {
+      console.log('👁️ Mensagem marcada como lida:', messageId)
+      setConversation(prev => prev ? {
+        ...prev,
+        messages: prev.messages.map(msg => 
+          msg.id === messageId ? { ...msg, isRead: true } : msg
+        )
+      } : prev)
+    }
+  })
+
   // WebSocket connection removido - funcionalidade removida do projeto
 
   const scrollToBottom = () => {
@@ -59,13 +86,26 @@ export default function ChatPage() {
     try {
       setIsLoading(true)
       
-      const response = await fetch(`/api/chats/${conversationId}/messages`)
-      if (!response.ok) {
-        throw new Error('Erro ao carregar conversa')
+      const result = await getConversationDetails(conversationId)
+      if (result.success) {
+        // Converte para o formato local
+        const convertedConversation = {
+          ...result.data.conversation,
+          business: {
+            ...result.data.conversation.business,
+            profileImage: result.data.conversation.business.profileImage || undefined,
+            phone: result.data.conversation.business.phone || undefined
+          },
+          messages: result.data.conversation.messages.map(msg => ({
+            ...msg,
+            createdAt: typeof msg.createdAt === 'string' ? msg.createdAt : msg.createdAt.toISOString(),
+            senderType: msg.senderType as 'CUSTOMER' | 'BUSINESS'
+          }))
+        } as ConversationDetails
+        setConversation(convertedConversation)
+      } else {
+        throw new Error(result.error)
       }
-      
-      const data = await response.json()
-      setConversation(data.conversation)
       
       // Join chat room via WebSocket - REMOVIDO
       // Funcionalidade WebSocket removida do projeto
@@ -75,7 +115,7 @@ export default function ChatPage() {
       // Fallback para mock data
       const mockConversation: ConversationDetails = {
         id: conversationId,
-        restaurant: {
+        business: {
           id: 'rest-1',
           name: 'Pizzaria Bella Italia',
           slug: 'pizzaria-bella-italia',
@@ -86,7 +126,7 @@ export default function ChatPage() {
           {
             id: 'msg-1',
             content: 'Olá! Seu pedido foi recebido e está sendo preparado.',
-            senderType: 'RESTAURANT',
+            senderType: 'BUSINESS',
             createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
             isRead: true
           },
@@ -106,7 +146,7 @@ export default function ChatPage() {
     }
   }, [conversationId, session?.user])
 
-  const sendMessage = async () => {
+  const handleSendMessage = async () => {
     if (!newMessage.trim() || !conversation || isSending) return
     
     try {
@@ -129,25 +169,23 @@ export default function ChatPage() {
       const messageContent = newMessage.trim()
       setNewMessage('')
       
-      const response = await fetch(`/api/chats/${conversationId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: messageContent })
-      })
+      const result = await sendMessage(conversationId, { content: messageContent })
       
-      if (!response.ok) {
-        throw new Error('Erro ao enviar mensagem')
+      if (result.success) {
+        // Substituir mensagem temporária pela real
+        setConversation(prev => prev ? {
+          ...prev,
+          messages: prev.messages.map(msg => 
+            msg.id === tempMessage.id ? {
+              ...result.data.message,
+              createdAt: result.data.message.createdAt,
+              senderType: result.data.message.senderType as 'CUSTOMER' | 'BUSINESS'
+            } : msg
+          )
+        } : prev)
+      } else {
+        throw new Error(result.error || 'Erro ao enviar mensagem')
       }
-      
-      const data = await response.json()
-      
-      // Substituir mensagem temporária pela real
-      setConversation(prev => prev ? {
-        ...prev,
-        messages: prev.messages.map(msg => 
-          msg.id === tempMessage.id ? data.message : msg
-        )
-      } : prev)
       
       // Enviar via WebSocket - REMOVIDO
       // Funcionalidade WebSocket removida do projeto
@@ -171,7 +209,7 @@ export default function ChatPage() {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      handleSendMessage()
     }
   }
 
@@ -237,7 +275,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Header personalizado com info do restaurante */}
+      {/* Header personalizado com info da empresa */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
@@ -251,22 +289,22 @@ export default function ChatPage() {
             </Button>
             
             <Avatar className="w-10 h-10">
-              <AvatarImage src={conversation.restaurant.profileImage} />
+              <AvatarImage src={conversation.business.profileImage || undefined} />
               <AvatarFallback className="bg-orange-100 text-orange-600 text-sm">
-                {conversation.restaurant.name.slice(0, 2).toUpperCase()}
+                {conversation.business.name.slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             
             <div className="flex-1 min-w-0">
               <h1 className="font-semibold text-slate-800 truncate">
-                {conversation.restaurant.name}
+                {conversation.business.name}
               </h1>
               <p className="text-xs text-slate-500">Online</p>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
-            {conversation.restaurant.phone && (
+            {conversation.business.phone && (
               <Button variant="ghost" size="sm" className="p-2">
                 <Phone className="h-5 w-5" />
               </Button>
@@ -305,12 +343,12 @@ export default function ChatPage() {
                   )}
                 </div>
               </div>
-              
-              {message.senderType === 'RESTAURANT' && (
+
+              {message.senderType === 'BUSINESS' && (
                 <Avatar className="w-8 h-8 ml-2 order-2 flex-shrink-0">
-                  <AvatarImage src={conversation.restaurant.profileImage} />
+                  <AvatarImage src={conversation.business.profileImage || undefined} />
                   <AvatarFallback className="bg-orange-100 text-orange-600 text-xs">
-                    {conversation.restaurant.name.slice(0, 1).toUpperCase()}
+                    {conversation.business.name.slice(0, 1).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
               )}
@@ -334,7 +372,7 @@ export default function ChatPage() {
               disabled={isSending}
             />
             <Button 
-              onClick={sendMessage}
+              onClick={handleSendMessage}
               disabled={!newMessage.trim() || isSending}
               size="sm" 
               className="h-11 w-11 p-0 rounded-full bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300"

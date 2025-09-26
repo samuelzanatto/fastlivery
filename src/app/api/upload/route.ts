@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { ImageService, ImageType } from '@/lib/image-service'
+import { auth } from '@/lib/auth/auth'
+import { ImageService } from '@/lib/services/image-service'
+import { ImageType } from '@/lib/services/image-types'
 
 // Force Node.js runtime for file system operations
 export const runtime = 'nodejs'

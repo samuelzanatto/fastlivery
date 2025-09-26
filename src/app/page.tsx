@@ -5,9 +5,9 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { PWAHeader } from '@/components/pwa-header'
-import { UserProfileSheet } from '@/components/user-profile-sheet'
-import { DynamicPricingSection } from '@/components/dynamic-pricing-section'
+import { PWAHeader } from '@/components/layout/pwa-header'
+import { UserProfile } from '@/components/profile/unified-user-profile'
+import { DynamicPricingSection } from '@/components/checkout/dynamic-pricing-section'
 import { 
   Zap, 
   Smartphone, 
@@ -18,26 +18,25 @@ import {
   Shield,
   Clock
 } from 'lucide-react'
-import { useSession } from '@/lib/auth-client'
-import { useRestaurantContext } from '@/hooks/useRestaurantContext'
+import { useSession } from '@/lib/auth/auth-client'
 import { useRouter } from 'next/navigation'
 
 export default function LandingPage() {
   const { data: session } = useSession()
-  const { restaurant } = useRestaurantContext()
-  const hasRestaurant = !!restaurant
   const router = useRouter()
   const [isExiting, setIsExiting] = useState(false)
 
-  // Verificar se o usuário é admin/proprietário de restaurante
-  const isRestaurantOwner = session?.user && hasRestaurant
+  // Para a landing page, apenas verificar se há sessão ativa
+  // Não precisamos buscar dados do negócio aqui
+  const isAuthenticated = !!session?.user
 
   const handleAccessClick = () => {
     // Trigger exit animation for all components
     setIsExiting(true)
     
     setTimeout(() => {
-      if (isRestaurantOwner) {
+      if (isAuthenticated) {
+        // Se autenticado, ir para o dashboard (onde o hook de negócio será usado apropriadamente)
         router.push('/dashboard')
       } else {
         router.push('/login')
@@ -98,21 +97,21 @@ export default function LandingPage() {
   const testimonials = [
     {
       name: "Carlos Silva",
-      restaurant: "Pizzaria do Carlos",
-      content: "Desde que começamos a usar o ZapLivery, nossas vendas por delivery aumentaram 300%. A plataforma é intuitiva e nossos clientes adoram!",
+      business: "Pizzaria do Carlos",
+      content: "Desde que começamos a usar o FastLivery, nossas vendas por delivery aumentaram 300%. A plataforma é intuitiva e nossos clientes adoram!",
       rating: 5,
       image: "/api/placeholder/60/60"
     },
     {
       name: "Marina Santos",
-      restaurant: "Burger House",
+      business: "Burger House",
       content: "O sistema de gestão é fantástico. Conseguimos controlar estoque, pedidos e finanças tudo em um lugar só. Recomendo demais!",
       rating: 5,
       image: "/api/placeholder/60/60"
     },
     {
       name: "João Oliveira", 
-      restaurant: "Sushi Zen",
+      business: "Sushi Zen",
       content: "A integração com redes sociais e o app próprio fizeram toda diferença. Nossos clientes agora pedem direto pelo WhatsApp!",
       rating: 5,
       image: "/api/placeholder/60/60"
@@ -123,7 +122,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white">
       {/* PWA Header - Mobile First */}
       <PWAHeader 
-        title="ZapLivery" 
+        title="FastLivery" 
         showBackButton={false}
         showMenu={true}
         menuType="landing"
@@ -133,7 +132,7 @@ export default function LandingPage() {
       />
 
       {/* Desktop Header - Hidden on mobile */}
-      <header className="hidden lg:block sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b">
+      <header className="hidden lg:block sticky top-0 z-50 bg-white/80 backdrop-blur-md">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <motion.div
             initial="initial"
@@ -143,7 +142,7 @@ export default function LandingPage() {
             className="flex items-center space-x-2"
           >
             <Zap className="h-8 w-8 text-orange-500" />
-            <span className="text-2xl font-bold text-slate-800">ZapLivery</span>
+            <span className="text-2xl font-bold text-slate-800">FastLivery</span>
           </motion.div>
           
           <motion.div
@@ -163,7 +162,7 @@ export default function LandingPage() {
               Depoimentos
             </a>
             <Button onClick={handleAccessClick} className="bg-orange-500 hover:bg-orange-600">
-              {isRestaurantOwner ? 'Acessar Dashboard' : 'Começar Agora'}
+              {isAuthenticated ? 'Acessar Dashboard' : 'Começar Agora'}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </motion.div>
@@ -189,7 +188,7 @@ export default function LandingPage() {
             variants={fadeInUp}
             transition={{ duration: 0.8, delay: isExiting ? 0.3 : 0.3 }}
           >
-            Transforme seu restaurante em uma
+            Transforme sua empresa em uma
             <span className="text-orange-500 block">máquina de vendas</span>
           </motion.h1>
           
@@ -217,7 +216,7 @@ export default function LandingPage() {
               className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
             >
               <Zap className="h-5 w-5 mr-2" />
-              {isRestaurantOwner ? 'Acessar Dashboard' : 'Começar Agora'}
+              {isAuthenticated ? 'Acessar Dashboard' : 'Começar Agora'}
             </Button>
             
             <Button 
@@ -254,7 +253,7 @@ export default function LandingPage() {
             className="text-center mb-16"
           >
             <h2 className="text-3xl lg:text-4xl font-bold text-slate-800 mb-4">
-              Tudo que seu restaurante precisa
+              Tudo que sua empresa precisa
             </h2>
             <p className="text-xl text-slate-600 max-w-2xl mx-auto">
               Sistema completo para transformar seu negócio e multiplicar suas vendas
@@ -352,10 +351,10 @@ export default function LandingPage() {
             className="text-center mb-16"
           >
             <h2 className="text-3xl lg:text-4xl font-bold text-slate-800 mb-4">
-              Nossos clientes amam o ZapLivery
+              Nossos clientes amam o FastLivery
             </h2>
             <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-              Veja o que restaurantes como o seu estão dizendo
+              Veja o que empresas como a sua estão dizendo
             </p>
           </motion.div>
 
@@ -391,7 +390,7 @@ export default function LandingPage() {
                       </div>
                       <div>
                         <h4 className="font-semibold text-slate-800">{testimonial.name}</h4>
-                        <p className="text-sm text-slate-500">{testimonial.restaurant}</p>
+                        <p className="text-sm text-slate-500">{testimonial.business}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -415,7 +414,7 @@ export default function LandingPage() {
               Pronto para revolucionar seu delivery?
             </h2>
             <p className="text-xl text-orange-100 mb-8 max-w-2xl mx-auto">
-              Junte-se a centenas de restaurantes que já transformaram seu negócio
+              Junte-se a centenas de empresas que já transformaram seu negócio
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -425,7 +424,7 @@ export default function LandingPage() {
                 className="bg-white text-orange-500 hover:bg-orange-50 px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 <Zap className="h-5 w-5 mr-2" />
-                {isRestaurantOwner ? 'Acessar Dashboard' : 'Começar Agora'}
+                {isAuthenticated ? 'Acessar Dashboard' : 'Começar Agora'}
               </Button>
             </div>
             
@@ -443,10 +442,10 @@ export default function LandingPage() {
             <div>
               <div className="flex items-center space-x-2 mb-6">
                 <Zap className="h-8 w-8 text-orange-500" />
-                <span className="text-2xl font-bold">ZapLivery</span>
+                <span className="text-2xl font-bold">FastLivery</span>
               </div>
               <p className="text-slate-300 leading-relaxed">
-                A plataforma completa para transformar seu restaurante em uma máquina de vendas digitais.
+                A plataforma completa para transformar sua empresa em uma máquina de vendas digitais.
               </p>
             </div>
             
@@ -481,13 +480,13 @@ export default function LandingPage() {
           </div>
           
           <div className="border-t border-slate-700 mt-12 pt-8 text-center text-slate-400">
-            <p>&copy; 2024 ZapLivery. Todos os direitos reservados.</p>
+            <p>&copy; 2024 FastLivery. Todos os direitos reservados.</p>
           </div>
         </div>
       </footer>
 
       {/* User Profile Sheet - Global */}
-      <UserProfileSheet />
+      <UserProfile mode="sheet" readOnly />
     </div>
   )
 }

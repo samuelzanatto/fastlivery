@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { PWAHeader } from '@/components/pwa-header'
+import { PWAHeader } from '@/components/layout/pwa-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useSession } from '@/lib/auth-client'
+import { useSession } from '@/lib/auth/auth-client'
+import { getConversations } from '@/actions/chats/chats'
 import { 
   MessageCircle,
   Search,
@@ -17,18 +18,18 @@ import { Button } from '@/components/ui/button'
 
 interface Conversation {
   id: string
-  restaurant: {
+  business: {
     id: string
     name: string
     slug: string
-    profileImage?: string
+    profileImage: string | null
   }
   lastMessage?: {
     id: string
     content: string
-    createdAt: string
-    senderType: 'CUSTOMER' | 'RESTAURANT'
-  }
+    createdAt: Date | string
+    senderType: string
+  } | null
   unreadCount: number
   updatedAt: string
 }
@@ -42,7 +43,7 @@ export default function ChatsPage() {
 
   // Filtrar conversas baseado na busca
   const filteredConversations = conversations.filter(conversation =>
-    conversation.restaurant.name.toLowerCase().includes(searchQuery.toLowerCase())
+    conversation.business.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const formatTime = (dateString: string) => {
@@ -67,13 +68,12 @@ export default function ChatsPage() {
     try {
       setIsLoading(true)
       
-      const response = await fetch('/api/chats')
-      if (!response.ok) {
-        throw new Error('Erro ao carregar conversas')
+      const result = await getConversations()
+      if (result.success) {
+        setConversations(result.data.conversations)
+      } else {
+        throw new Error(result.error)
       }
-      
-      const data = await response.json()
-      setConversations(data.conversations)
     } catch (error) {
       console.error('Erro ao carregar conversas:', error)
       
@@ -81,28 +81,28 @@ export default function ChatsPage() {
       const mockConversations: Conversation[] = [
         {
           id: '1',
-          restaurant: {
+          business: {
             id: 'rest-1',
             name: 'Pizzaria Bella Italia',
             slug: 'pizzaria-bella-italia',
-            profileImage: undefined
+            profileImage: null
           },
           lastMessage: {
             id: 'msg-1',
             content: 'Obrigado pelo pedido! Sua pizza estará pronta em breve.',
             createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 minutos atrás
-            senderType: 'RESTAURANT'
+            senderType: 'BUSINESS'
           },
           unreadCount: 2,
           updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
         },
         {
           id: '2',
-          restaurant: {
+          business: {
             id: 'rest-2',
             name: 'Hamburgeria do João',
             slug: 'hamburgeria-do-joao',
-            profileImage: undefined
+            profileImage: null
           },
           lastMessage: {
             id: 'msg-2',
@@ -139,7 +139,7 @@ export default function ChatsPage() {
             Acesso necessário
           </h3>
           <p className="text-slate-600 mb-6">
-            Faça login para ver seus chats com os restaurantes
+            Faça login para ver seus chats com as empresas.
           </p>
           <Button onClick={() => router.push('/login')}>
             Fazer Login
@@ -158,7 +158,7 @@ export default function ChatsPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
           <Input
-            placeholder="Buscar restaurantes..."
+            placeholder="Buscar empresas..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -191,8 +191,8 @@ export default function ChatsPage() {
             </h3>
             <p className="text-slate-600">
               {searchQuery 
-                ? 'Tente buscar por outro restaurante' 
-                : 'Faça um pedido e converse com o restaurante!'
+                ? 'Tente buscar por outra empresa' 
+                : 'Faça um pedido e converse com a empresa!'
               }
             </p>
           </div>
@@ -206,11 +206,11 @@ export default function ChatsPage() {
               >
                 <CardContent className="p-4">
                   <div className="flex items-center space-x-3">
-                    {/* Avatar do restaurante */}
+                    {/* Avatar da empresa */}
                     <Avatar className="w-12 h-12 flex-shrink-0">
-                      <AvatarImage src={conversation.restaurant.profileImage} />
+                      <AvatarImage src={conversation.business.profileImage || undefined} />
                       <AvatarFallback className="bg-orange-100 text-orange-600">
-                        {conversation.restaurant.name.slice(0, 2).toUpperCase()}
+                        {conversation.business.name.slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
 
@@ -218,7 +218,7 @@ export default function ChatsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <h4 className="font-medium text-slate-800 truncate">
-                          {conversation.restaurant.name}
+                          {conversation.business.name}
                         </h4>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <span className="text-xs text-slate-500">

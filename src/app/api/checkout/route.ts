@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
+import { getAppUrl } from '@/lib/utils/urls'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-08-27.basil',
@@ -27,12 +28,12 @@ export async function POST(request: NextRequest) {
       items, 
       customerInfo, 
       paymentMethod,
-      restaurantId 
+      businessId 
     }: {
       items: CartItem[]
       customerInfo: CustomerInfo
       paymentMethod: string
-      restaurantId: string
+      businessId: string
     } = await request.json()
 
     console.log('Dados recebidos no checkout:', {
@@ -44,17 +45,17 @@ export async function POST(request: NextRequest) {
         imageType: typeof item.image 
       })),
       paymentMethod,
-      restaurantId
+      businessId
     })
 
-    // Buscar informações do restaurante
-    const restaurant = await prisma.restaurant.findUnique({
-      where: { id: restaurantId }
+    // Buscar informações do negócio
+    const business = await prisma.business.findUnique({
+      where: { id: businessId }
     })
 
-    if (!restaurant) {
+    if (!business) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Negócio não encontrado' },
         { status: 404 }
       )
     }
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
         }
         
         // Se é um caminho relativo, converter para URL absoluta
-        const baseUrl = process.env.NEXTAUTH_URL || 'https://zaplivery.vercel.app'
+        const baseUrl = getAppUrl()
         const fullUrl = image.startsWith('/') ? `${baseUrl}${image}` : `${baseUrl}/${image}`
         
         // Validar a URL construída
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
         const cashOrder = await prisma.order.create({
           data: {
             orderNumber: orderNumberMoney,
-            restaurantId,
+            businessId,
             type: 'DELIVERY',
             status: 'PENDING',
             subtotal: subtotalMoney,
@@ -226,13 +227,13 @@ export async function POST(request: NextRequest) {
         payment_method_types: methods,
         line_items: lineItems,
         mode: 'payment',
-        return_url: `${process.env.NEXTAUTH_URL}/checkout/return?session_id={CHECKOUT_SESSION_ID}`,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/return?session_id={CHECKOUT_SESSION_ID}`,
         automatic_tax: { enabled: false },
         customer_creation: 'always',
         customer_email: customerInfo.email,
         payment_method_options: options,
         metadata: {
-          restaurantId: restaurantId,
+          businessId: businessId,
           customerName: customerInfo.name,
           customerPhone: customerInfo.phone,
           orderType: 'DELIVERY',
@@ -282,7 +283,7 @@ export async function POST(request: NextRequest) {
     const order = await prisma.order.create({
       data: {
         orderNumber,
-        restaurantId,
+        businessId,
         type: 'DELIVERY',
         status: 'PENDING',
         subtotal,

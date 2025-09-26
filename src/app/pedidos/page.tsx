@@ -1,26 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { PWAHeader } from '@/components/pwa-header'
-import { UserProfileSheet } from '@/components/user-profile-sheet'
+import { PWAHeader } from '@/components/layout/pwa-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ShoppingBag, RefreshCw, Plus, Star, MapPin, Clock, Phone } from 'lucide-react'
 import Link from 'next/link'
 
 // Formatação simples de moeda
-const formatCurrency = (value: number): string => {
-  return value.toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL'
-  })
-}
+import { formatCurrency } from '@/lib/utils/formatters'
 
 interface CustomerOrder {
   id: string
   orderNumber: string
-  restaurantName: string
-  restaurantLogo?: string
+  businessName: string
+  businessLogo?: string
   status: 'pending' | 'preparing' | 'on_way' | 'delivered' | 'cancelled'
   total: number
   createdAt: string
@@ -76,8 +70,8 @@ export default function PedidosPage() {
         {
           id: 'ord_001',
           orderNumber: '#1234',
-          restaurantName: 'Burger King',
-          restaurantLogo: '/uploads/burger-king.png',
+          businessName: 'Burger King',
+          businessLogo: '/uploads/burger-king.png',
           status: 'on_way',
           total: 35.90,
           createdAt: '2025-01-15T14:30:00Z',
@@ -107,7 +101,7 @@ export default function PedidosPage() {
         {
           id: 'ord_002',
           orderNumber: '#1235',
-          restaurantName: 'Pizza Hut',
+          businessName: 'Pizza Hut',
           status: 'delivered',
           total: 42.50,
           createdAt: '2025-01-14T19:15:00Z',
@@ -203,7 +197,7 @@ export default function PedidosPage() {
                       <ShoppingBag className="h-5 w-5 text-orange-600" />
                     </div>
                     <div>
-                      <h3 className="font-medium text-slate-900">{order.restaurantName}</h3>
+                      <h3 className="font-medium text-slate-900">{order.businessName}</h3>
                       <p className="text-sm text-slate-500">{order.orderNumber}</p>
                       <p className="text-xs text-slate-400 mt-1">
                         {new Date(order.createdAt).toLocaleString('pt-BR')}
@@ -302,9 +296,6 @@ export default function PedidosPage() {
           </div>
         )}
       </div>
-
-      {/* User Profile Sheet - Global */}
-      <UserProfileSheet />
     </div>
   )
 }

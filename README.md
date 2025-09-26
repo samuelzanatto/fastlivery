@@ -1,4 +1,4 @@
-# ZapLivery - SaaS de Delivery 🚀
+# FastLivery - SaaS de Delivery 🚀
 
 Sistema completo de delivery com assinaturas e pagamentos integrados.
 
@@ -18,7 +18,7 @@ Sistema completo de delivery com assinaturas e pagamentos integrados.
 ```bash
 # Clonar o repositório
 git clone [seu-repo]
-cd zaplivery
+cd fastlivery
 
 # Instalar dependências
 npm install
@@ -28,7 +28,7 @@ npm install
 
 ```bash
 # Configurar PostgreSQL
-createdb zaplivery
+createdb fastlivery
 
 # Executar migrações
 npx prisma migrate dev
@@ -51,7 +51,7 @@ Copie o arquivo `.env.example` para `.env` e configure:
 
 ```env
 # Database
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/zaplivery"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/fastlivery"
 
 # JWT
 JWT_SECRET="your-super-secret-jwt-key"

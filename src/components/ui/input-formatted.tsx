@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
-import { formatters, useAddressAutocomplete } from '@/lib/formatters'
+import { inputFormatters as formatters, useAddressAutocomplete } from '@/lib/utils/formatters'
 
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {

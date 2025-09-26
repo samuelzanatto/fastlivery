@@ -11,8 +11,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { ImageUpload } from '@/components/ui/image-upload'
 import { ImageGallery } from '@/components/ui/image-gallery'
-import { useImageManager } from '@/hooks/use-image-manager'
-import { ImageType } from '@/lib/image-types'
+import { useImageManager } from '@/hooks/media/use-image-manager'
+import { ImageType } from '@/lib/services/image-types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Upload, ImageIcon, Loader2 } from 'lucide-react'
 

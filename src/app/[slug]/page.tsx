@@ -3,16 +3,16 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useParams, useRouter } from 'next/navigation'
-import { useSession } from '@/lib/auth-client'
-import { toastHelpers } from '@/lib/toast-helpers'
-import { useAutoOpenClose } from '@/hooks/use-auto-open-close'
-import { useRestaurantStatus } from '@/hooks/use-restaurant-status'
-import { parseOpeningHours, type WeeklyHours } from '@/lib/utils-app'
-import { PWAHeader } from '@/components/pwa-header'
-import { UserProfileSheet } from '@/components/user-profile-sheet'
-import { IntegratedCheckout } from '@/components/integrated-checkout'
-import { ProductOptionsModal } from '@/components/product-options-modal'
+import { useSession } from '@/lib/auth/auth-client'
+import { notify } from '@/lib/notifications/notify'
+import { useAutoOpenClose } from '@/hooks/business/use-auto-open-close'
+import { useBusinessStatus } from '@/hooks/business/use-business-status'
+import { parseOpeningHours, type WeeklyHours } from '@/lib/utils/business-hours'
+import { PWAHeader } from '@/components/layout/pwa-header'
+import { IntegratedCheckout } from '@/components/checkout/integrated-checkout'
+import { ProductOptionsModal } from '@/components/checkout/product-options-modal'
 import { CartProvider, useCart } from '@/contexts/cart-context'
+import { getProductWithOptions } from '@/actions/products/products'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -75,7 +75,7 @@ interface Product {
   options?: ProductOption[]
 }
 
-interface Restaurant {
+interface Business {
   id: string
   name: string
   slug: string
@@ -95,13 +95,13 @@ interface Restaurant {
   banner?: string
 }
 
-function RestaurantPageContent() {
+function BusinessPageContent() {
   const params = useParams()
   const router = useRouter()
   const { data: session } = useSession()
   const { addItem, removeItem, getItemQuantity, addItemWithOptions } = useCart()
   const [isLoading, setIsLoading] = useState(true)
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
+  const [business, setBusiness] = useState<Business | null>(null)
   const [_products, setProducts] = useState<Product[]>([])
   const [productsByCategory, setProductsByCategory] = useState<Record<string, Product[]>>({})
   const [_categories, setCategories] = useState<string[]>([])
@@ -137,40 +137,40 @@ function RestaurantPageContent() {
   }
 
   // Auto abre/fecha apenas para refletir na UI (não persiste no servidor na página pública)
-  useAutoOpenClose(restaurant?.openingHours ?? null, {
+  useAutoOpenClose(business?.openingHours ?? null, {
     syncToServer: false,
     onStatusChange: (isOpen) => {
-      setRestaurant(prev => (prev ? { ...prev, isOpen } : prev))
+      setBusiness(prev => (prev ? { ...prev, isOpen } : prev))
     }
   })
 
-  // Verificação periódica do status do restaurante
-  const { status: restaurantStatus, isLoading: statusLoading, error: _statusError } = useRestaurantStatus({
+  // Verificação periódica do status da empresa
+  const { status: businessStatus, isLoading: statusLoading, error: _statusError } = useBusinessStatus({
     slug: params.slug as string,
-    enabled: !!restaurant,
+    enabled: !!business,
     refreshInterval: 30000 // 30 segundos
   })
 
-  // Validação e carregamento do restaurante
+  // Validação e carregamento do negócio
   useEffect(() => {
-    const validateRestaurant = async () => {
+    const validateBusiness = async () => {
       try {
         const slug = params.slug as string
         
-        // Buscar dados do restaurante da API
-        const restaurantResponse = await fetch(`/api/restaurant/${slug}`)
-        
-        if (!restaurantResponse.ok) {
-          toastHelpers.system.error('Restaurante não encontrado')
+        // Buscar dados do negócio da API
+        const businessResponse = await fetch(`/api/business/${slug}`)
+
+        if (!businessResponse.ok) {
+          notify('error', 'Negócio não encontrado')
           router.push('/')
           return
         }
-        
-        const restaurantData = await restaurantResponse.json()
-        setRestaurant(restaurantData)
-        
-        // Buscar produtos do restaurante
-        const productsResponse = await fetch(`/api/restaurant/${slug}/products`)
+
+        const businessData = await businessResponse.json()
+        setBusiness(businessData)
+
+        // Buscar produtos do negócio
+        const productsResponse = await fetch(`/api/business/${slug}/products`)
         
         if (productsResponse.ok) {
           const productsData = await productsResponse.json()
@@ -190,26 +190,24 @@ function RestaurantPageContent() {
           }
         }
         
-        toastHelpers.system.success('Cardápio carregado com sucesso!')
+  notify('success', 'Cardápio carregado com sucesso!')
       } catch {
-        toastHelpers.system.error('Erro ao carregar o restaurante')
+        notify('error', 'Erro ao carregar a empresa')
         router.push('/')
       } finally {
         setIsLoading(false)
       }
     }
 
-    validateRestaurant()
+    validateBusiness()
   }, [params.slug, router])
 
   const addToCart = (product: Product) => {
-    if (!restaurant) return
-    
-    // Verificar se o restaurante pode aceitar pedidos
-    if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
-      toastHelpers.system.error(
-        restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'
-      )
+    if (!business) return
+
+    // Verificar se o negócio pode aceitar pedidos
+    if (businessStatus && !businessStatus.canAcceptOrders) {
+      notify('error', businessStatus.message || 'Negócio não está aceitando pedidos no momento')
       return
     }
     
@@ -222,36 +220,26 @@ function RestaurantPageContent() {
       finalPrice: product.price,
       image: product.image,
       category: product.category,
-      restaurantId: restaurant.id
+      businessId: business.id
     })
   }
 
   const handleProductClick = async (product: Product) => {
-    // Verificar se o restaurante pode aceitar pedidos
-    if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
-      toastHelpers.system.error(
-        restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'
-      )
+    // Verificar se o negócio pode aceitar pedidos
+    if (businessStatus && !businessStatus.canAcceptOrders) {
+      notify('error', businessStatus.message || 'Empresa não está aceitando pedidos no momento')
       return
     }
     
     try {
       // Buscar opções do produto
-      const response = await fetch(`/api/products/${product.id}/options`)
-      if (response.ok) {
-        const data = await response.json()
-        const productWithOptions = { ...product, options: data.product.options }
-        
-        // Se o produto tem opções, abrir modal
-        if (data.product.options && data.product.options.length > 0) {
-          setSelectedProduct(productWithOptions)
-          setIsOptionsModalOpen(true)
-        } else {
-          // Se não tem opções, adicionar diretamente ao carrinho
-          addToCart(product)
-        }
+      const result = await getProductWithOptions(product.id)
+      if (result.success && result.data.product.options && result.data.product.options.length > 0) {
+        const productWithOptions = { ...product, options: result.data.product.options }
+        setSelectedProduct(productWithOptions)
+        setIsOptionsModalOpen(true)
       } else {
-        // Em caso de erro, adicionar sem opções
+        // Se não tem opções, adicionar diretamente ao carrinho
         addToCart(product)
       }
     } catch (error) {
@@ -267,13 +255,11 @@ function RestaurantPageContent() {
     quantity: number, 
     totalPrice: number
   ) => {
-    if (!restaurant) return
+    if (!business) return
 
-    // Verificar se o restaurante pode aceitar pedidos
-    if (restaurantStatus && !restaurantStatus.canAcceptOrders) {
-      toastHelpers.system.error(
-        restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'
-      )
+    // Verificar se o negócio pode aceitar pedidos
+    if (businessStatus && !businessStatus.canAcceptOrders) {
+      notify('error', businessStatus.message || 'Empresa não está aceitando pedidos no momento')
       return
     }
 
@@ -288,7 +274,7 @@ function RestaurantPageContent() {
       totalPrice / quantity, // Preço unitário final
       product.image,
       product.category,
-      restaurant.id,
+      business.id,
       selectedOptions,
       optionsText,
       quantity
@@ -327,14 +313,14 @@ function RestaurantPageContent() {
     // Para delivery, verificar se o usuário está logado
     if (type === 'DELIVERY') {
       if (!session?.user) {
-        toastHelpers.auth.error('É necessário fazer login para pedidos delivery')
+  notify('error', 'É necessário fazer login para pedidos delivery')
         router.push(`/customer-login?redirectTo=${encodeURIComponent(`/${params.slug}`)}`)
         return
       }
     }
     
     setOrderType(type)
-    toastHelpers.system.success(`Modalidade selecionada: ${
+    notify('success', `Modalidade selecionada: ${
       type === 'DELIVERY' ? 'Delivery' : 
       type === 'PICKUP' ? 'Retirada' : 
       'Consumo Local'
@@ -351,14 +337,14 @@ function RestaurantPageContent() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando restaurante...</p>
+          <p className="text-gray-600">Carregando empresa...</p>
         </div>
       </div>
     )
   }
 
-  // Se não encontrou o restaurante, não renderiza nada (redirecionou)
-  if (!restaurant) {
+  // Se não encontrou a empresa, não renderiza nada (redirecionou)
+  if (!business) {
     return null
   }
 
@@ -371,15 +357,15 @@ function RestaurantPageContent() {
           scrollBlur={true}
           className="lg:hidden"
         />
-        
-        {/* Restaurant Header - Mobile PWA Optimized */}
+
+        {/* Empresa Header - Mobile PWA Optimized */}
         <div className="relative">
           {/* Banner Background - Full height from top */}
           <div className="h-48 sm:h-64 bg-gradient-to-r from-orange-500 to-orange-600">
-            {restaurant.banner ? (
+            {business.banner ? (
               <Image 
-                src={restaurant.banner} 
-                alt="Banner do restaurante"
+                src={business.banner} 
+                alt="Banner da empresa"
                 width={800}
                 height={256}
                 className="w-full h-48 sm:h-64 object-cover"
@@ -387,33 +373,33 @@ function RestaurantPageContent() {
               />
             ) : null}
           </div>
-          
-          {/* Restaurant Info - No Card, Mobile First */}
+
+          {/* Empresa Info - No Card, Mobile First */}
           <div className="px-4 -mt-12 sm:-mt-20 relative z-10 pb-6">
             {/* Centered Avatar */}
             <div className="flex justify-center mb-4">
               <Avatar className="w-24 h-24 sm:w-28 sm:h-28 border-4 border-white shadow-lg">
-                <AvatarImage src={restaurant.avatar || "/placeholder-restaurant.jpg"} />
+                <AvatarImage src={business.avatar || "/placeholder-business.jpg"} />
                 <AvatarFallback className="text-xl sm:text-2xl bg-white">
-                  {restaurant.name.slice(0, 2).toUpperCase()}
+                  {business.name.slice(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             </div>
-            
-            {/* Restaurant Details - Centered Layout */}
+
+            {/* Empresa Details - Centered Layout */}
             <Collapsible open={showDetails} onOpenChange={setShowDetails}>
               <div className="text-center space-y-3">
                 {/* Name, Status and Collapsible Trigger */}
                 <div className="flex items-center justify-center gap-3">
                   <h1 className="text-xl sm:text-2xl font-bold text-slate-800">
-                    {restaurant.name}
+                    {business.name}
                   </h1>
                   {/* Status Badge - Atualizado com status em tempo real */}
                   {statusLoading ? (
                     <Badge variant="secondary" className="text-xs animate-pulse">Verificando...</Badge>
-                  ) : restaurantStatus?.canAcceptOrders ? (
+                  ) : businessStatus?.canAcceptOrders ? (
                     <Badge className="bg-green-100 text-green-800 text-xs">Aberto - Aceitando Pedidos</Badge>
-                  ) : restaurantStatus?.isOpen ? (
+                  ) : businessStatus?.isOpen ? (
                     <Badge className="bg-yellow-100 text-yellow-800 text-xs">Aberto - Não Aceitando Pedidos</Badge>
                   ) : (
                     <Badge className="bg-red-100 text-red-800 text-xs">Fechado</Badge>
@@ -427,36 +413,36 @@ function RestaurantPageContent() {
                 
                 <CollapsibleContent className="mt-3 space-y-3">
                   {/* Description */}
-                  {restaurant.description && (
+                  {business.description && (
                     <p className="text-slate-600 text-sm sm:text-base max-w-sm mx-auto leading-relaxed">
-                      {restaurant.description}
+                      {business.description}
                     </p>
                   )}
                   
                   <div className="grid grid-cols-2 gap-2 max-w-sm mx-auto">
-                    {restaurant.rating && (
+                    {business.rating && (
                       <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2">
                         <Star className="h-3 w-3 text-yellow-500 flex-shrink-0" />
-                        <span className="font-medium">{restaurant.rating}</span>
+                        <span className="font-medium">{business.rating}</span>
                       </div>
                     )}
                     
-                    {restaurant.deliveryTime && (
+                    {business.deliveryTime && (
                       <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2">
                         <Clock className="h-3 w-3 flex-shrink-0" />
-                        <span>{restaurant.deliveryTime} min</span>
+                        <span>{business.deliveryTime} min</span>
                       </div>
                     )}
                     
                     <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2 col-span-2">
                       <Timer className="h-3 w-3 flex-shrink-0" />
-                      <span className="truncate">{formatOpeningHours(restaurant.openingHours)}</span>
+                      <span className="truncate">{formatOpeningHours(business.openingHours)}</span>
                     </div>
                     
-                    {restaurant.address && (
+                    {business.address && (
                       <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2 col-span-2">
                         <MapPin className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{restaurant.address}</span>
+                        <span className="truncate">{business.address}</span>
                       </div>
                     )}
                   </div>
@@ -476,7 +462,7 @@ function RestaurantPageContent() {
           
           {/* Stack vertically on mobile */}
           <div className="space-y-3 max-w-md mx-auto">
-            {restaurant.acceptsDelivery && (
+            {business.acceptsDelivery && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -500,8 +486,8 @@ function RestaurantPageContent() {
                 </Card>
               </motion.div>
             )}
-            
-            {restaurant.acceptsPickup && (
+
+            {business.acceptsPickup && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -525,8 +511,8 @@ function RestaurantPageContent() {
                 </Card>
               </motion.div>
             )}
-            
-            {restaurant.acceptsDineIn && (
+
+            {business.acceptsDineIn && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -552,9 +538,6 @@ function RestaurantPageContent() {
             )}
           </div>
         </div>
-        
-        {/* User Profile Sheet - Global */}
-        <UserProfileSheet />
       </div>
     )
   }
@@ -563,7 +546,7 @@ function RestaurantPageContent() {
     <div className="min-h-screen bg-white">
       {/* PWA Header - Normal with back button and white background */}
       <PWAHeader 
-        title={restaurant.name}
+        title={business.name}
         showBackButton={true}
         noBorder
         onBack={() => setOrderType(null)}
@@ -697,18 +680,18 @@ function RestaurantPageContent() {
 
           {/* Products - Mobile optimized */}
           <div className="lg:col-span-3 order-2">
-            {/* Aviso quando restaurante não aceita pedidos */}
-            {restaurantStatus && !restaurantStatus.canAcceptOrders && (
+            {/* Aviso quando empresa não aceita pedidos */}
+            {businessStatus && !businessStatus.canAcceptOrders && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <div className="flex items-center gap-2 text-red-800">
                   <Clock className="h-4 w-4" />
                   <p className="text-sm font-medium">
-                    {restaurantStatus.message || 'Restaurante não está aceitando pedidos no momento'}
+                    {businessStatus.message || 'Empresa não está aceitando pedidos no momento'}
                   </p>
                 </div>
-                {restaurantStatus.nextChange && (
+                {businessStatus.nextChange && (
                   <p className="text-red-600 text-xs mt-1">
-                    Próxima alteração: {restaurantStatus.nextChange}
+                    Próxima alteração: {businessStatus.nextChange}
                   </p>
                 )}
               </div>
@@ -773,7 +756,7 @@ function RestaurantPageContent() {
                               variant="outline"
                               onClick={() => removeFromCart(product.id)}
                               className="h-8 w-8 p-0"
-                              disabled={!!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
+                              disabled={!!(businessStatus && !businessStatus.canAcceptOrders)}
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
@@ -784,7 +767,7 @@ function RestaurantPageContent() {
                               size="sm"
                               onClick={() => addToCart(product)}
                               className="bg-orange-500 hover:bg-orange-600 h-8 w-8 p-0"
-                              disabled={!!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
+                              disabled={!!(businessStatus && !businessStatus.canAcceptOrders)}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
@@ -794,7 +777,7 @@ function RestaurantPageContent() {
                             size="sm"
                             onClick={() => handleProductClick(product)}
                             className="bg-orange-500 hover:bg-orange-600 text-xs px-3 h-8"
-                            disabled={!!(restaurantStatus && !restaurantStatus.canAcceptOrders)}
+                            disabled={!!(businessStatus && !businessStatus.canAcceptOrders)}
                           >
                             <Plus className="h-3 w-3 mr-1" />
                             Adicionar
@@ -810,13 +793,10 @@ function RestaurantPageContent() {
         </div>
       </div>
       
-      {/* User Profile Sheet - Global */}
-      <UserProfileSheet />
-      
       {/* Floating Checkout Cart */}
       <IntegratedCheckout 
-        restaurantSlug={params.slug as string} 
-        restaurantStatus={restaurantStatus}
+        businessSlug={params.slug as string} 
+        businessStatus={businessStatus}
       />
       
       {/* Product Options Modal */}
@@ -833,10 +813,10 @@ function RestaurantPageContent() {
   )
 }
 
-export default function RestaurantPage() {
+export default function BusinessPage() {
   return (
     <CartProvider>
-      <RestaurantPageContent />
+      <BusinessPageContent />
     </CartProvider>
   )
 }

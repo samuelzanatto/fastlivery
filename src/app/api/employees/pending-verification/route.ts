@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,18 +10,18 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const restaurantId = searchParams.get('restaurantId')
+    const businessId = searchParams.get('businessId')
 
-    if (!restaurantId) {
-      return NextResponse.json({ 
-        error: 'ID do restaurante é obrigatório' 
+    if (!businessId) {
+      return NextResponse.json({
+        error: 'ID da empresa é obrigatório'
       }, { status: 400 })
     }
 
-    // Verificar se o usuário tem acesso a este restaurante
-    const restaurant = await prisma.restaurant.findFirst({
+    // Verificar se o usuário tem acesso a este negócio
+    const business = await prisma.business.findFirst({
       where: {
-        id: restaurantId,
+        id: businessId,
         OR: [
           { ownerId: sessionResponse.user.id },
           {
@@ -44,14 +44,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    if (!restaurant) {
+    if (!business) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
     // Buscar funcionários pendentes de verificação
     const pendingEmployees = await prisma.employeeProfile.findMany({
       where: {
-        restaurantId,
+        businessId,
         isActive: false,
         user: {
           emailVerified: false

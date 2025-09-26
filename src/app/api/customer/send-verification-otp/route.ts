@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/database/prisma'
 import nodemailer from 'nodemailer'
 
 // Throttling em memória para OTPs
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     const html = `
       <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #2563eb; margin: 0;">ZapLivery</h1>
+          <h1 style="color: #2563eb; margin: 0;">FastLivery</h1>
         </div>
         
         <div style="background: #f8fafc; border-radius: 8px; padding: 24px; margin-bottom: 20px;">
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
         </div>
         
         <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 0;">
-          © 2024 ZapLivery. Todos os direitos reservados.
+          © 2024 FastLivery. Todos os direitos reservados.
         </p>
       </div>
     `
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     await transporter.sendMail({
       from: `${process.env.SMTP_FROM_NAME} <${process.env.SMTP_FROM}>`,
       to: email,
-      subject: 'Verificação de Email - ZapLivery',
+      subject: 'Verificação de Email - FastLivery',
       html,
     })
 

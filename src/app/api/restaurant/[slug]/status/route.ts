@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { getRestaurantStatus } from '@/lib/restaurant-hours'
+import { prisma } from '@/lib/database/prisma'
+import { getBusinessStatus } from '@/lib/utils/business-hours'
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
     const { slug } = await params
 
-    const restaurant = await prisma.restaurant.findFirst({
+    const business = await prisma.business.findFirst({
       where: { slug },
       select: {
         id: true,
@@ -22,37 +22,38 @@ export async function GET(
       }
     })
 
-    if (!restaurant) {
+    if (!business) {
       return NextResponse.json(
-        { error: 'Restaurante não encontrado' },
+        { error: 'Negócio não encontrado' },
         { status: 404 }
       )
     }
 
-    const status = getRestaurantStatus(restaurant.isOpen, restaurant.openingHours)
+    const status = getBusinessStatus(business.isOpen, business.openingHours)
     
     // Determinar se pode aceitar pedidos baseado no status e serviços disponíveis
     const canAcceptOrders = status.isCurrentlyOpen && (
-      restaurant.acceptsDelivery || 
-      restaurant.acceptsPickup || 
-      restaurant.acceptsDineIn
+      business.acceptsDelivery || 
+      business.acceptsPickup || 
+      business.acceptsDineIn
     )
 
+    // Manter compatibilidade com API antiga - usar "businessId" na resposta
     return NextResponse.json({
-      restaurantId: restaurant.id,
-      name: restaurant.name,
+      businessId: business.id,
+      name: business.name,
       isOpen: status.isCurrentlyOpen,
       canAcceptOrders,
       message: status.message,
       services: {
-        delivery: restaurant.acceptsDelivery,
-        pickup: restaurant.acceptsPickup,
-        dineIn: restaurant.acceptsDineIn
+        delivery: business.acceptsDelivery,
+        pickup: business.acceptsPickup,
+        dineIn: business.acceptsDineIn
       }
     })
 
   } catch (error) {
-    console.error('Erro ao verificar status do restaurante:', error)
+    console.error('Erro ao buscar status do negócio:', error)
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }

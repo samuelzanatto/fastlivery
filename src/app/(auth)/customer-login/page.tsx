@@ -10,8 +10,8 @@ import { Separator } from '@/components/ui/separator'
 import { Store, Eye, EyeOff, Mail, Chrome } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { signIn } from '@/lib/auth-client'
-import toast from 'react-hot-toast'
+import { signIn } from '@/lib/auth/auth-client'
+import { notify } from '@/lib/notifications/notify'
 
 const fadeIn = {
   initial: { opacity: 0, y: 20 },
@@ -43,7 +43,7 @@ export default function CustomerLoginPage() {
       const message = urlParams.get('message')
       
       if (error) {
-        toast.error(decodeURIComponent(error), { duration: 6000 })
+        notify('error', decodeURIComponent(error), { duration: 6000 })
         
         const url = new URL(window.location.href)
         url.searchParams.delete('error')
@@ -51,7 +51,7 @@ export default function CustomerLoginPage() {
       }
 
       if (message) {
-        toast.success(decodeURIComponent(message), { duration: 4000 })
+        notify('success', decodeURIComponent(message), { duration: 4000 })
         
         const url = new URL(window.location.href)
         url.searchParams.delete('message')
@@ -90,18 +90,18 @@ export default function CustomerLoginPage() {
       })
 
       if (error) {
-        toast.error(error.message || 'Credenciais inválidas')
+        notify('error', error.message || 'Credenciais inválidas')
         setIsLoading(false)
         return
       }
 
       if (data) {
-        toast.success('Login realizado com sucesso!')
+        notify('success', 'Login realizado com sucesso!')
         router.push(callbackURL)
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro inesperado'
-      toast.error(errorMessage)
+      notify('error', errorMessage)
       setIsLoading(false)
     }
   }
@@ -118,7 +118,7 @@ export default function CustomerLoginPage() {
       })
 
       if (error) {
-        toast.error('Erro no login com Google')
+        notify('error', 'Erro no login com Google')
         setIsGoogleLoading(false)
         return
       }
@@ -140,7 +140,7 @@ export default function CustomerLoginPage() {
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro no login com Google'
-      toast.error(errorMessage)
+      notify('error', errorMessage)
       setIsGoogleLoading(false)
     }
   }
@@ -164,7 +164,7 @@ export default function CustomerLoginPage() {
               >
                 <Store className="h-12 w-12 text-orange-500" />
               </motion.div>
-              <h1 className="text-3xl font-bold text-slate-800">ZapLivery</h1>
+              <h1 className="text-3xl font-bold text-slate-800">FastLivery</h1>
               <p className="text-slate-600 mt-2">Faça login em sua conta de cliente</p>
             </div>
 
@@ -346,7 +346,7 @@ export default function CustomerLoginPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold">50+</div>
-                  <div className="text-sm">Restaurantes</div>
+                  <div className="text-sm">Empresas</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold">24/7</div>

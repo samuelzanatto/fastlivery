@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Zap, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { signIn } from '@/lib/auth-client'
-import toast from 'react-hot-toast'
+import { signIn } from '@/lib/auth/auth-client'
+import { notify } from '@/lib/notifications/notify'
 
 // Variantes de animação definidas fora do componente
 const fadeInUp = {
@@ -78,7 +78,7 @@ export default function LoginPage() {
               errorMessage = error
           }
           
-          toast.error(errorMessage, { duration: 6000 })
+          notify('error', errorMessage, { duration: 6000 })
           
           // Limpar a URL após mostrar o erro
           const url = new URL(window.location.href)
@@ -88,7 +88,7 @@ export default function LoginPage() {
         }
 
         if (message) {
-          toast.success(decodeURIComponent(message), { duration: 4000 })
+          notify('success', decodeURIComponent(message), { duration: 4000 })
           
           // Limpar a URL
           const url = new URL(window.location.href)
@@ -113,19 +113,19 @@ export default function LoginPage() {
       })
 
       if (error) {
-        toast.error(error.message || 'Erro ao fazer login')
+        notify('error', error.message || 'Erro ao fazer login')
         setIsLoading(false)
         return
       }
 
       if (data) {
-        toast.success('Login realizado com sucesso!')
+        notify('success', 'Login realizado com sucesso!')
         // Trigger exit animation before navigation
         handleNavigation('/dashboard')
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro inesperado'
-      toast.error(errorMessage)
+  notify('error', errorMessage)
       setIsLoading(false)
     }
   }
@@ -159,7 +159,7 @@ export default function LoginPage() {
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-1.5 rounded-lg shadow-sm">
               <Zap className="w-5 h-5 text-white" />
             </div>
-            ZapLivery
+            FastLivery
           </Link>
         </motion.div>
         
@@ -297,7 +297,7 @@ export default function LoginPage() {
                 <Zap className="w-full h-full text-white" />
               </div>
               <h2 className="text-2xl font-bold text-orange-900 mb-4">
-                Administre seu Restaurante
+                Administre sua Empresa
               </h2>
               <p className="text-orange-700 leading-relaxed">
                 Acesse o painel administrativo para gerenciar pedidos, produtos, relatórios e muito mais.

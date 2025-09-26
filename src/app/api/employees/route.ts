@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth/auth'
+import { prisma } from '@/lib/database/prisma'
+import { createEmployeeSchema, validateUUID } from '@/lib/validation/schemas'
+import { secureLogger } from '@/lib/security/sanitize'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,30 +12,30 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const restaurantId = searchParams.get('restaurantId')
+    const businessId = searchParams.get('businessId')
 
-    if (!restaurantId) {
-      return NextResponse.json({ error: 'restaurantId obrigatório' }, { status: 400 })
+    if (!businessId) {
+      return NextResponse.json({ error: 'businessId obrigatório' }, { status: 400 })
     }
 
-    // Verificar se usuário tem acesso ao restaurante
-    const restaurant = await prisma.restaurant.findUnique({
-      where: { id: restaurantId },
+    // Verificar se usuário tem acesso ao negócio
+    const business = await prisma.business.findUnique({
+      where: { id: businessId },
       select: { ownerId: true }
     })
 
-    if (!restaurant) {
-      return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
+    if (!business) {
+      return NextResponse.json({ error: 'Negócio não encontrado' }, { status: 404 })
     }
 
-    const isOwner = restaurant.ownerId === sessionResponse.user.id
+    const isOwner = business.ownerId === sessionResponse.user.id
     
     if (!isOwner) {
       // Verificar se é funcionário
       const employeeProfile = await prisma.employeeProfile.findFirst({
         where: {
           userId: sessionResponse.user.id,
-          restaurantId,
+          businessId,
           isActive: true
         }
       })
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest) {
     }
 
     const employees = await prisma.employeeProfile.findMany({
-      where: { restaurantId },
+      where: { businessId },
       include: {
         user: {
           select: { 
@@ -87,27 +89,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    const { restaurantId, email, roleId, name, notes } = await request.json()
-
-    if (!restaurantId || !email || !roleId) {
-      return NextResponse.json({ 
-        error: 'restaurantId, email e roleId são obrigatórios' 
+    // Validação rigorosa com Zod
+    const body = await request.json()
+    const validation = createEmployeeSchema.safeParse(body)
+    
+    if (!validation.success) {
+      secureLogger.warn('Dados inválidos ao criar funcionário', {
+        userId: sessionResponse.user.id,
+        errors: validation.error.issues,
+        ip: request.headers.get('x-forwarded-for')
+      })
+      
+      return NextResponse.json({
+        error: 'Dados inválidos',
+        details: validation.error.issues.map(issue => ({
+          field: issue.path.join('.'),
+          message: issue.message
+        }))
       }, { status: 400 })
     }
 
-    // Verificar se usuário é dono do restaurante
-    const restaurant = await prisma.restaurant.findUnique({
-      where: { id: restaurantId },
+    const { businessId, email, roleId, name, notes } = validation.data
+
+    // Validar UUIDs
+    if (!validateUUID(businessId) || !validateUUID(roleId)) {
+      return NextResponse.json({ 
+        error: 'IDs inválidos fornecidos' 
+      }, { status: 400 })
+    }
+
+    // Verificar se usuário é dono do negócio
+    const business = await prisma.business.findUnique({
+      where: { id: businessId },
       select: { ownerId: true }
     })
 
-    if (!restaurant || restaurant.ownerId !== sessionResponse.user.id) {
+    if (!business || business.ownerId !== sessionResponse.user.id) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
     // Verificar se o cargo existe
     const role = await prisma.role.findFirst({
-      where: { id: roleId, restaurantId }
+      where: { id: roleId, businessId }
     })
 
     if (!role) {
@@ -140,24 +163,23 @@ export async function POST(request: NextRequest) {
       user = await prisma.user.update({
         where: { id: authResult.user.id },
         data: {
-          userType: 'EMPLOYEE',
           isActive: false, // Só será ativo após verificação de email
           emailVerified: false
         }
       })
     }
 
-    // Verificar se usuário já é funcionário neste restaurante
+    // Verificar se usuário já é funcionário neste negócio
     const existingEmployee = await prisma.employeeProfile.findFirst({
       where: {
         userId: user.id,
-        restaurantId
+        businessId
       }
     })
 
     if (existingEmployee) {
       return NextResponse.json({ 
-        error: 'Usuário já é funcionário deste restaurante' 
+        error: 'Usuário já é funcionário deste negócio' 
       }, { status: 400 })
     }
 
@@ -165,7 +187,7 @@ export async function POST(request: NextRequest) {
     const employeeProfile = await prisma.employeeProfile.create({
       data: {
         userId: user.id,
-        restaurantId,
+        businessId,
         roleId,
         notes: notes || (user.emailVerified ? null : `Senha padrão: TempPass123! - DEVE ser alterada no primeiro login`),
         createdById: sessionResponse.user.id
@@ -219,7 +241,7 @@ export async function POST(request: NextRequest) {
         requiresPasswordChange: !user.emailVerified,
         message: !user.emailVerified 
           ? "Funcionário criado com senha padrão. Email de verificação enviado." 
-          : "Funcionário adicionado ao restaurante."
+          : "Funcionário adicionado ao negócio."
       }
     }, { status: 201 })
   } catch (error) {

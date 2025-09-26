@@ -2,7 +2,7 @@
 
 import { useEffect, Suspense } from 'react'
 import { motion } from 'framer-motion'
-import { toast } from 'sonner'
+import { notify } from '@/lib/notifications/notify'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { XCircle, RefreshCw, ArrowLeft } from 'lucide-react'
@@ -17,8 +17,8 @@ function PaymentFailureContent() {
   useEffect(() => {
     console.log('Payment failed - ID:', paymentId, 'Status:', status)
     
-    // Exibir toast de erro
-    toast.error('Pagamento recusado', {
+    // Exibir notificação de erro
+    notify('error', 'Pagamento recusado', {
       description: 'Não foi possível processar seu pagamento. Verifique os dados do cartão e tente novamente.',
       duration: 6000,
     })

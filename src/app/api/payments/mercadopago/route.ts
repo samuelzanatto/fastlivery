@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { createMercadoPagoService } from '@/lib/mercadopago'
+import { prisma } from '@/lib/database/prisma'
+import { createMercadoPagoService } from '@/lib/payments/mercadopago'
 
 // Helper para notificar novo pedido via WebSocket - REMOVIDO
-async function notifyNewOrder(restaurantId: string, orderId: string) {
+async function notifyNewOrder(businessId: string, orderId: string) {
   // Funcionalidade WebSocket removida do projeto
-  console.log(`� Notificação de novo pedido para restaurante ${restaurantId}, pedido ${orderId} (WebSocket removido)`)
+  console.log(`� Notificação de novo pedido para negócio ${businessId}, pedido ${orderId} (WebSocket removido)`)
 }
 
 /**
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const items = context.items || body.items || []
     const customerInfo = context.customer || body.customerInfo || {}
     const selectedAddress = context.address || body.selectedAddress
-    const restaurantSlug = context.restaurantId || body.restaurantId
+    const businessSlug = context.businessId || body.businessId
     
     // Dados do Brick extraídos corretamente
     const paymentType = selectedPaymentMethod
@@ -59,30 +59,30 @@ export async function POST(request: NextRequest) {
         }
       }, { status: 400 })
     }
-    
-    if (!items.length || !customerInfo?.email || !restaurantSlug) {
-      return NextResponse.json({ 
-        error: 'Dados incompletos para pagamento: itens, email ou restaurante ausentes',
-        debug: { itemsCount: items.length, hasEmail: !!customerInfo?.email, hasRestaurant: !!restaurantSlug }
+
+    if (!items.length || !customerInfo?.email || !businessSlug) {
+      return NextResponse.json({
+        error: 'Dados incompletos para pagamento: itens, email ou empresa ausentes',
+        debug: { itemsCount: items.length, hasEmail: !!customerInfo?.email, hasBusiness: !!businessSlug }
       }, { status: 400 })
     }
 
-    // Buscar restaurante via slug
-    const restaurant = await prisma.restaurant.findFirst({
-      where: { slug: restaurantSlug },
+    // Buscar negócio via slug
+    const business = await prisma.business.findFirst({
+      where: { slug: businessSlug },
       select: { id: true, name: true, mercadoPagoAccessToken: true, mercadoPagoConfigured: true, isActive: true, deliveryFee: true }
     })
 
-    if (!restaurant) return NextResponse.json({ error: 'Restaurante não encontrado' }, { status: 404 })
-    if (!restaurant.isActive) return NextResponse.json({ error: 'Restaurante inativo' }, { status: 400 })
-    if (!restaurant.mercadoPagoConfigured || !restaurant.mercadoPagoAccessToken) {
+    if (!business) return NextResponse.json({ error: 'Negócio não encontrado' }, { status: 404 })
+    if (!business.isActive) return NextResponse.json({ error: 'Negócio inativo' }, { status: 400 })
+    if (!business.mercadoPagoConfigured || !business.mercadoPagoAccessToken) {
       return NextResponse.json({ error: 'Mercado Pago não configurado' }, { status: 400 })
     }
 
-    const mercadoPagoService = await createMercadoPagoService(restaurant.id)
+    const mercadoPagoService = await createMercadoPagoService(business.id)
 
     // Calcular subtotal (ignorar totalAmount recebido para consistência)
-    const deliveryFee = restaurant.deliveryFee || 0
+    const deliveryFee = business.deliveryFee || 0
   interface BrickItem { id: string; name: string; price: number; quantity: number }
   const typedItems: BrickItem[] = items as BrickItem[]
   const subtotal = typedItems.reduce((acc: number, it) => acc + (it.price * it.quantity), 0)
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     // Criar pedido preliminar
     const order = await prisma.order.create({
       data: {
-        restaurantId: restaurant.id,
+        businessId: business.id,
         orderNumber,
         type: 'DELIVERY', // assumindo delivery
         status: 'PENDING',
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
         email: customerInfo.email as string
       },
       paymentMethod,
-      restaurantId: restaurant.id,
+      businessId: business.id,
       orderNumber
     }
 
@@ -150,8 +150,8 @@ export async function POST(request: NextRequest) {
           data: { stripeSessionId: String(pix.id) }
         })
         
-        // Notificar restaurante sobre novo pedido PIX
-        await notifyNewOrder(restaurant.id, order.id)
+        // Notificar negócio sobre novo pedido PIX
+        await notifyNewOrder(business.id, order.id)
         
         return NextResponse.json({
           type: 'pix_payment',
@@ -192,8 +192,8 @@ export async function POST(request: NextRequest) {
           data: { stripeSessionId: String(cardResult.id) }
         })
 
-        // Notificar restaurante sobre novo pedido com cartão
-        await notifyNewOrder(restaurant.id, order.id)
+        // Notificar negócio sobre novo pedido com cartão
+        await notifyNewOrder(business.id, order.id)
 
         return NextResponse.json({
           type: 'card_payment',
@@ -215,8 +215,8 @@ export async function POST(request: NextRequest) {
       const pref = await mercadoPagoService.createPaymentPreference(paymentData)
       await prisma.order.update({ where: { id: order.id }, data: { stripeSessionId: String(pref.id) } })
       
-      // Notificar restaurante sobre novo pedido (Checkout Pro)
-      await notifyNewOrder(restaurant.id, order.id)
+      // Notificar negócio sobre novo pedido (Checkout Pro)
+      await notifyNewOrder(business.id, order.id)
       
       return NextResponse.json({
         type: 'checkout_pro',

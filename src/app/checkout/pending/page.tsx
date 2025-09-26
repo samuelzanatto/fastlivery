@@ -40,9 +40,11 @@ function CheckoutPendingPageContent() {
     if (!orderNumber) return
 
     try {
-      const response = await fetch(`/api/orders/by-number/${orderNumber}`)
-      if (response.ok) {
-        const order = await response.json()
+      const { getOrderByNumber } = await import('@/actions/orders/orders')
+      const result = await getOrderByNumber(orderNumber)
+      
+      if (result.success) {
+        const order = result.data
         if (order.paymentStatus === 'APPROVED') {
           router.push(`/checkout/success?order=${orderNumber}&status=approved`)
         } else if (order.paymentStatus === 'REJECTED') {
