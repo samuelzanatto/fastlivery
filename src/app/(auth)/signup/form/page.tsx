@@ -80,7 +80,7 @@ function SignupPageContent() {
   const [category, setCategory] = useState('restaurant')
   
   // Estados de controle
-  const [selectedPlan, setSelectedPlan] = useState('pro')
+  const [selectedPlan, setSelectedPlan] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
   
@@ -236,16 +236,18 @@ function SignupPageContent() {
     }
   }, [companyType]) // Executa quando companyType muda
 
-  // UseEffect separado para selecionar automaticamente o primeiro plano
+  // UseEffect separado para selecionar automaticamente o primeiro plano apenas quando há um plano específico na URL
   useEffect(() => {
-    if (dynamicPlans.length > 0) {
-      const currentSelectedExists = dynamicPlans.some((p: Plan) => p.id === selectedPlan)
-      if (!currentSelectedExists) {
-        setSelectedPlan(dynamicPlans[0].id)
-        console.log('🔄 Plano selecionado automaticamente:', dynamicPlans[0].id)
+    const planFromUrl = searchParams.get('plan')
+    if (planFromUrl && dynamicPlans.length > 0) {
+      const planExists = dynamicPlans.some((p: Plan) => p.id === planFromUrl)
+      if (planExists) {
+        setSelectedPlan(planFromUrl)
+        console.log('🔄 Plano selecionado via URL:', planFromUrl)
       }
     }
-  }, [dynamicPlans, selectedPlan])
+    // Não definir um plano padrão - deixar vazio por padrão
+  }, [dynamicPlans, searchParams])
 
   // Verificar se há erros na URL
   useEffect(() => {
@@ -417,10 +419,15 @@ function SignupPageContent() {
       return
     }
 
-    // Verificação obrigatória de email
+    // Verificação obrigatória de seleção de plano
+    if (!selectedPlan) {
+      notify('warning', 'Por favor, selecione um plano antes de continuar')
+      return
+    }
+
+    // Verificação obrigatória de email apenas se ainda não foi verificado
     if (!isEmailVerified) {
-      notify('error', 'Você precisa verificar seu email antes de continuar')
-      handleStartEmailVerification()
+      notify('warning', 'Você precisa verificar seu email antes de continuar. Clique no botão ao lado do campo de email para verificar.')
       return
     }
 
@@ -950,6 +957,12 @@ function SignupPageContent() {
                     </Link>
                   </div>
                 )}
+                {!selectedPlan && !searchParams.get('plan') && (
+                  <p className="text-sm text-amber-600 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Selecione um plano para continuar
+                  </p>
+                )}
               </CardHeader>
               <CardContent className="space-y-3">
                 {plansLoading ? (
@@ -1001,6 +1014,7 @@ function SignupPageContent() {
                           checked={selectedPlan === plan.id}
                           onChange={() => setSelectedPlan(plan.id)}
                           className="text-orange-500"
+                          name="plan-selection"
                         />
                         <div>
                           <h3 className="font-semibold text-sm">{plan.name}</h3>
@@ -1031,8 +1045,8 @@ function SignupPageContent() {
               </CardContent>
             </Card>
 
-            {/* Resumo */}
-            {selectedPlanData && (
+            {/* Resumo - só mostra quando um plano está selecionado */}
+            {selectedPlan && selectedPlanData && (
               <Card className="border-1 shadow-xl">
                 <CardHeader>
                   <CardTitle className="text-lg">Resumo</CardTitle>

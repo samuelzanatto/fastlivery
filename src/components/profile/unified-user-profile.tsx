@@ -22,6 +22,8 @@ import { Label } from '@/components/ui/label'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { ImageUploadDialog } from '@/components/ui/image-upload-dialog'
+import { ImageType } from '@/lib/services/image-types'
 import { useIsMobile } from '@/hooks/ui/use-mobile'
 import { 
   User, 
@@ -34,6 +36,7 @@ import {
 } from 'lucide-react'
 import { notify } from '@/lib/notifications/notify'
 import { updateUserProfile } from '@/actions/users/profile'
+import { useBusinessLayout } from '@/providers/business-layout-provider'
 
 interface UserProfileProps {
   children?: React.ReactNode
@@ -54,6 +57,7 @@ export function UserProfile({
 }: UserProfileProps) {
   const router = useRouter()
   const { data: session } = useSession()
+  const { refreshUserProfile } = useBusinessLayout()
   const [isOpen, setIsOpen] = useState(open)
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -70,7 +74,8 @@ export function UserProfile({
     email: '',
     phone: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    avatar: ''
   })
 
   // Sincronizar com prop open
@@ -85,7 +90,8 @@ export function UserProfile({
         ...prev,
         name: session.user.name || '',
         email: session.user.email || '',
-        phone: '' // TODO: adicionar campo phone ao schema do usuário se necessário
+        phone: '', // TODO: adicionar campo phone ao schema do usuário se necessário
+        avatar: session.user.image || ''
       }))
     }
   }, [session])
@@ -125,6 +131,7 @@ export function UserProfile({
         name: formData.name,
         email: formData.email,
         phone: formData.phone || undefined,
+        ...(formData.avatar && { image: formData.avatar }),
         ...(formData.password && { password: formData.password })
       })
 
@@ -149,7 +156,7 @@ export function UserProfile({
       {/* User Info */}
       <div className="text-center space-y-3">
         <Avatar className="w-20 h-20 mx-auto">
-          <AvatarImage src={session?.user?.image || undefined} />
+          <AvatarImage src={formData.avatar || session?.user?.image || undefined} />
           <AvatarFallback className="text-lg">
             {session?.user?.name?.slice(0, 2).toUpperCase() || 'U'}
           </AvatarFallback>
@@ -227,19 +234,32 @@ export function UserProfile({
       <div className="text-center space-y-4">
         <div className="relative inline-block">
           <Avatar className="w-24 h-24">
-            <AvatarImage src={session?.user?.image || undefined} />
+            <AvatarImage src={formData.avatar || session?.user?.image || undefined} />
             <AvatarFallback className="text-xl">
               {session?.user?.name?.slice(0, 2).toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
           {isEditing && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
+            <ImageUploadDialog
+              entityId={session?.user?.id || ''}
+              imageType={ImageType.USER_AVATAR}
+              onImageSelect={async (image) => {
+                setFormData(prev => ({ ...prev, avatar: image.url }))
+                // Atualizar os dados do perfil na sidebar imediatamente
+                await refreshUserProfile()
+                notify('success', 'Avatar atualizado!')
+              }}
+              title="Alterar Avatar"
+              description="Escolha uma nova foto para seu perfil"
             >
-              <Camera className="w-4 h-4" />
-            </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
+              >
+                <Camera className="w-4 h-4" />
+              </Button>
+            </ImageUploadDialog>
           )}
         </div>
         

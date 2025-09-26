@@ -33,6 +33,15 @@ export interface ImageMetadata {
   originalSize?: number
 }
 
+export interface StorageFileInfo {
+  name: string
+  id?: string
+  updated_at?: string
+  created_at?: string
+  last_accessed_at?: string
+  metadata?: Record<string, unknown>
+}
+
 export enum ImageType {
   USER_AVATAR = 'user_avatar',
   BUSINESS_LOGO = 'business_logo',

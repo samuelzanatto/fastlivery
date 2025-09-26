@@ -115,6 +115,12 @@ const nextConfig: NextConfig = {
         hostname: '*.mercadopago.com',
         port: '',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/**',
       }
     ]
   }

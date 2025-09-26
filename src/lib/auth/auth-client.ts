@@ -1,6 +1,7 @@
 import { createAuthClient } from "better-auth/react"
 import { stripeClient } from "@better-auth/stripe/client"
 import { adminClient, organizationClient, inferAdditionalFields } from "better-auth/client/plugins"
+import { emailOTPClient } from "better-auth/client/plugins"
 import type { auth } from './auth'
 
 // Definições de roles do sistema
@@ -74,6 +75,7 @@ export const authClient = createAuthClient({
     stripeClient({ subscription: true }),
     adminClient(),
     organizationClient(),
+    emailOTPClient(),
     // Ativa inferência completa de campos adicionais do servidor para type-safety
     inferAdditionalFields<typeof auth>()
   ]

@@ -7,19 +7,23 @@
  * Obtem a URL base da aplicação baseada no ambiente
  */
 export function getAppUrl(): string {
-  // Em produção, NEXT_PUBLIC_APP_URL é obrigatória
+  // Priorizar NEXT_PUBLIC_APP_URL se configurada
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+
+  // Em produção na Vercel, usar VERCEL_URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  
+  // Em produção sem configuração, lançar erro
   if (process.env.NODE_ENV === 'production') {
-    const prodUrl = process.env.NEXT_PUBLIC_APP_URL
-    if (!prodUrl) {
-      throw new Error('NEXT_PUBLIC_APP_URL deve ser configurada em produção')
-    }
-    return prodUrl
+    throw new Error('NEXT_PUBLIC_APP_URL deve ser configurada em produção')
   }
   
   // Em desenvolvimento, priorizar NGROK se disponível, senão localhost
-  return process.env.NGROK_URL || 
-         process.env.NEXT_PUBLIC_APP_URL || 
-         'http://localhost:3000'
+  return process.env.NGROK_URL || 'http://localhost:3000'
 }
 
 /**
@@ -42,8 +46,7 @@ export function getAllowedOrigins(): string[] {
       'http://localhost:3000',
       'http://localhost:3001', 
       'http://localhost:4000',
-      'http://localhost:4040',
-      'http://192.168.1.106:3000'
+      'http://localhost:4040'
     ]
     origins.push(...devUrls, process.env.NGROK_URL)
   }

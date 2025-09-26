@@ -1,64 +1,69 @@
-// Este arquivo deve ser usado apenas no servidor (API Routes)
-import { prisma } from '@/lib/database/prisma'
-import { writeFile, mkdir, unlink, access } from 'fs/promises'
-import { join, extname } from 'path'
-import { v4 as uuidv4 } from 'uuid'
+import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'
-import { ImageType } from './image-types'
-import type { ImageUploadOptions, ImageRecord, ImageMetadata } from './image-types'
+import crypto from 'crypto'
+import { ImageUploadOptions, ImageRecord, ImageType, ImageMetadata } from './image-types'
 
-// Configurações padrão por tipo de imagem
+// Configurações dos tipos de imagens
 const IMAGE_CONFIGS = {
   [ImageType.USER_AVATAR]: {
-    maxWidth: 400,
-    maxHeight: 400,
-    quality: 85,
-    generateThumbnail: true,
-    allowedFormats: ['jpg', 'jpeg', 'png', 'webp']
-  },
-  [ImageType.BUSINESS_LOGO]: {
-    maxWidth: 300,
-    maxHeight: 300,
+    maxWidth: 200,
+    maxHeight: 200,
     quality: 90,
     generateThumbnail: true,
-    allowedFormats: ['jpg', 'jpeg', 'png', 'webp', 'svg']
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+    bucket: 'user-avatars'
+  },
+  [ImageType.BUSINESS_LOGO]: {
+    maxWidth: 400,
+    maxHeight: 400,
+    quality: 95,
+    generateThumbnail: true,
+    allowedFormats: ['jpg', 'jpeg', 'png', 'svg', 'webp'],
+    bucket: 'business-assets'
   },
   [ImageType.BUSINESS_BANNER]: {
     maxWidth: 1200,
-    maxHeight: 400,
-    quality: 80,
+    maxHeight: 600,
+    quality: 90,
     generateThumbnail: true,
-    allowedFormats: ['jpg', 'jpeg', 'png', 'webp']
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+    bucket: 'business-assets'
   },
   [ImageType.PRODUCT_IMAGE]: {
     maxWidth: 800,
     maxHeight: 800,
-    quality: 85,
+    quality: 90,
     generateThumbnail: true,
-    allowedFormats: ['jpg', 'jpeg', 'png', 'webp']
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+    bucket: 'product-images'
   },
   [ImageType.CATEGORY_IMAGE]: {
-    maxWidth: 600,
+    maxWidth: 400,
     maxHeight: 400,
-    quality: 80,
+    quality: 90,
     generateThumbnail: true,
-    allowedFormats: ['jpg', 'jpeg', 'png', 'webp']
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+    bucket: 'product-images'
   },
   [ImageType.GENERAL]: {
-    maxWidth: 1920,
-    maxHeight: 1080,
-    quality: 80,
+    maxWidth: 1200,
+    maxHeight: 1200,
+    quality: 85,
     generateThumbnail: false,
-    allowedFormats: ['jpg', 'jpeg', 'png', 'webp']
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+    bucket: 'fastlivery-images'
   }
 }
 
 export class ImageService {
   private static instance: ImageService
-  private uploadPath: string
+  private supabase: ReturnType<typeof createClient>
 
   private constructor() {
-    this.uploadPath = join(process.cwd(), 'public', 'uploads')
+    this.supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role para bypass RLS quando necessário
+    )
   }
 
   public static getInstance(): ImageService {
@@ -74,20 +79,32 @@ export class ImageService {
       // Validar arquivo
       await this.validateFile(file, options)
 
-      // Verificar se já existe uma imagem igual (evitar duplicatas)
-      const existingImage = await this.checkForDuplicate(file, options)
-      if (existingImage) {
-        return existingImage
+      // Processar e fazer upload da imagem
+      const { processedBuffer, metadata, thumbnailBuffer } = await this.processImage(file, options)
+      
+      // Fazer upload para o Supabase Storage
+      const { url, thumbnailUrl } = await this.uploadToStorage(
+        processedBuffer, 
+        thumbnailBuffer,
+        file.name, 
+        options
+      )
+      
+      // Criar record para retornar
+      const imageRecord: ImageRecord = {
+        id: crypto.randomUUID(),
+        filename: this.generateFilename(file.name),
+        originalName: file.name,
+        url,
+        thumbnailUrl,
+        size: processedBuffer.length,
+        type: options.type,
+        entityId: options.entityId,
+        category: options.category,
+        metadata,
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
-
-      // Gerar estrutura de diretórios
-      const uploadStructure = this.generateUploadPath(options)
-      
-      // Processar e salvar imagem
-      const processedFile = await this.processImage(file, options, uploadStructure)
-      
-      // Salvar no banco de dados
-      const imageRecord = await this.saveToDatabase(processedFile, options)
 
       return imageRecord
     } catch (error) {
@@ -99,264 +116,215 @@ export class ImageService {
   // Validar arquivo
   private async validateFile(file: File, options: ImageUploadOptions): Promise<void> {
     const config = { ...IMAGE_CONFIGS[options.type], ...options }
-
-    // Validar tamanho (máximo 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      throw new Error('Arquivo muito grande. Máximo de 10MB permitido.')
-    }
-
-    // Validar tipo de arquivo
-    if (!file.type.startsWith('image/')) {
-      throw new Error('Apenas arquivos de imagem são permitidos.')
-    }
-
-    // Validar formato específico
-    const extension = extname(file.name).toLowerCase().replace('.', '')
-    if (!config.allowedFormats.includes(extension)) {
-      throw new Error(`Formato não permitido. Permitidos: ${config.allowedFormats.join(', ')}`)
-    }
-  }
-
-  // Verificar duplicatas baseadas no hash do arquivo
-  private async checkForDuplicate(file: File, options: ImageUploadOptions): Promise<ImageRecord | null> {
-    try {
-      const buffer = Buffer.from(await file.arrayBuffer())
-      const crypto = await import('crypto')
-      const hash = crypto.createHash('md5').update(buffer).digest('hex')
-
-      // Procurar por imagem com mesmo hash e tipo
-      const existing = await prisma.image.findFirst({
-        where: {
-          hash,
-          type: options.type,
-          entityId: options.entityId
-        }
-      })
-
-      if (existing) {
-        return {
-          id: existing.id,
-          filename: existing.filename,
-          originalName: existing.originalName,
-          url: existing.url,
-          thumbnailUrl: existing.thumbnailUrl || undefined,
-          size: existing.size,
-          type: existing.type as ImageType,
-          entityId: existing.entityId,
-          category: existing.category || undefined,
-          metadata: existing.metadata as unknown as ImageMetadata,
-          createdAt: existing.createdAt,
-          updatedAt: existing.updatedAt
-        }
-      }
-
-      return null
-    } catch (error) {
-      // Se der erro no check de duplicata, continua com upload
-      console.warn('Erro ao verificar duplicata:', error)
-      return null
-    }
-  }
-
-  // Gerar estrutura de diretórios organizada
-  private generateUploadPath(options: ImageUploadOptions): { 
-    directory: string, 
-    relativePath: string 
-  } {
-    const year = new Date().getFullYear()
-    const month = String(new Date().getMonth() + 1).padStart(2, '0')
     
-    const relativePath = join(
-      options.type,
-      year.toString(),
-      month,
-      options.entityId
-    )
+    // Verificar tamanho do arquivo (5MB padrão)
+    const maxSize = 5 * 1024 * 1024
+    if (file.size > maxSize) {
+      throw new Error(`Arquivo muito grande. Tamanho máximo: ${maxSize / 1024 / 1024}MB`)
+    }
 
-    const directory = join(this.uploadPath, relativePath)
-    
-    return { directory, relativePath }
+    // Verificar tipo do arquivo
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    if (!extension || !config.allowedFormats.includes(extension)) {
+      throw new Error(`Formato não suportado. Formatos permitidos: ${config.allowedFormats.join(', ')}`)
+    }
   }
 
   // Processar imagem (redimensionar, otimizar)
   private async processImage(
     file: File, 
-    options: ImageUploadOptions, 
-    uploadStructure: { directory: string, relativePath: string }
-  ) {
+    options: ImageUploadOptions
+  ): Promise<{
+    processedBuffer: Buffer
+    metadata: ImageMetadata
+    thumbnailBuffer?: Buffer
+  }> {
     const config = { ...IMAGE_CONFIGS[options.type], ...options }
     const buffer = Buffer.from(await file.arrayBuffer())
     
-    // Criar diretório se não existir
-    await mkdir(uploadStructure.directory, { recursive: true })
-
-    // Gerar nome único
-    const extension = extname(file.name).toLowerCase()
-    const filename = `${uuidv4()}${extension}`
-    const filepath = join(uploadStructure.directory, filename)
-    
-    let processedBuffer = buffer
-    let metadata: ImageMetadata
-
-    // Processar com Sharp se não for SVG
-    if (extension !== '.svg') {
-      const sharpInstance = sharp(buffer)
-      await sharpInstance.metadata()
-
-      // Redimensionar se necessário
-      if (config.maxWidth || config.maxHeight) {
-        sharpInstance.resize(config.maxWidth, config.maxHeight, {
-          fit: 'inside',
-          withoutEnlargement: true
-        })
-      }
-
-      // Otimizar qualidade
-      if (extension === '.jpg' || extension === '.jpeg') {
-        sharpInstance.jpeg({ quality: config.quality })
-      } else if (extension === '.png') {
-        sharpInstance.png({ quality: config.quality })
-      } else if (extension === '.webp') {
-        sharpInstance.webp({ quality: config.quality })
-      }
-
-      processedBuffer = Buffer.from(await sharpInstance.toBuffer())
-      const processedInfo = await sharp(processedBuffer).metadata()
-
-      metadata = {
-        width: processedInfo.width || 0,
-        height: processedInfo.height || 0,
-        format: processedInfo.format || 'unknown',
-        mimeType: file.type,
-        originalSize: buffer.length
-      }
-    } else {
-      // Para SVGs, apenas salvar sem processar
-      metadata = {
-        width: 0,
-        height: 0,
-        format: 'svg',
-        mimeType: file.type,
-        originalSize: buffer.length
+    // Para SVG, não processamos
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    if (extension === 'svg') {
+      return {
+        processedBuffer: buffer,
+        metadata: {
+          width: 0,
+          height: 0,
+          format: 'svg',
+          mimeType: 'image/svg+xml',
+          originalSize: buffer.length
+        }
       }
     }
 
-    // Salvar arquivo principal
-    await writeFile(filepath, processedBuffer)
+    // Usar Sharp para processar
+    let sharpInstance = sharp(buffer)
+    const imageMetadata = await sharpInstance.metadata()
 
-    let thumbnailPath: string | undefined
-    
+    // Redimensionar se necessário
+    if (config.maxWidth || config.maxHeight) {
+      sharpInstance = sharpInstance.resize(config.maxWidth, config.maxHeight, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+    }
+
+    // Aplicar qualidade e converter para formato otimizado
+    const processedBuffer = await sharpInstance
+      .jpeg({ quality: config.quality, progressive: true })
+      .toBuffer()
+
     // Gerar thumbnail se necessário
-    if (config.generateThumbnail && extension !== '.svg') {
-      const thumbnailFilename = `${uuidv4()}_thumb${extension}`
-      thumbnailPath = join(uploadStructure.directory, thumbnailFilename)
-      
-      await sharp(processedBuffer)
+    let thumbnailBuffer: Buffer | undefined
+    if (config.generateThumbnail) {
+      thumbnailBuffer = await sharp(buffer)
         .resize(150, 150, { fit: 'cover' })
-        .toFile(thumbnailPath)
+        .jpeg({ quality: 80 })
+        .toBuffer()
     }
 
-    const url = `/uploads/${uploadStructure.relativePath}/${filename}`.replace(/\\/g, '/')
-    const thumbnailUrl = thumbnailPath 
-      ? `/uploads/${uploadStructure.relativePath}/${thumbnailPath.split(/[/\\]/).pop()}`.replace(/\\/g, '/')
-      : undefined
+    const metadata: ImageMetadata = {
+      width: imageMetadata.width || 0,
+      height: imageMetadata.height || 0,
+      format: 'jpeg',
+      mimeType: 'image/jpeg',
+      originalSize: buffer.length
+    }
+
+    return { processedBuffer, metadata, thumbnailBuffer }
+  }
+
+  // Upload para Supabase Storage
+  private async uploadToStorage(
+    processedBuffer: Buffer,
+    thumbnailBuffer: Buffer | undefined,
+    originalFilename: string,
+    options: ImageUploadOptions
+  ): Promise<{ url: string; thumbnailUrl?: string }> {
+    const config = IMAGE_CONFIGS[options.type]
+    const filename = this.generateFilename(originalFilename)
+    const filePath = this.generateStoragePath(options, filename)
+
+    // Upload da imagem principal
+    const { error: uploadError } = await this.supabase.storage
+      .from(config.bucket)
+      .upload(filePath, processedBuffer, {
+        contentType: 'image/jpeg',
+        cacheControl: '31536000', // 1 ano
+        upsert: false
+      })
+
+    if (uploadError) {
+      console.error('Erro no upload:', uploadError)
+      throw new Error(`Erro no upload: ${uploadError.message}`)
+    }
+
+    // Obter URL pública
+    const { data: urlData } = this.supabase.storage
+      .from(config.bucket)
+      .getPublicUrl(filePath)
+
+    let thumbnailUrl: string | undefined
+    
+    // Upload do thumbnail se existir
+    if (thumbnailBuffer) {
+      const thumbnailPath = this.generateStoragePath(options, `thumb_${filename}`)
+      
+      const { error: thumbError } = await this.supabase.storage
+        .from(config.bucket)
+        .upload(thumbnailPath, thumbnailBuffer, {
+          contentType: 'image/jpeg',
+          cacheControl: '31536000'
+        })
+
+      if (!thumbError) {
+        const { data: thumbUrlData } = this.supabase.storage
+          .from(config.bucket)
+          .getPublicUrl(thumbnailPath)
+        
+        thumbnailUrl = thumbUrlData.publicUrl
+      }
+    }
 
     return {
-      filename,
-      originalName: file.name,
-      url,
-      thumbnailUrl,
-      size: processedBuffer.length,
-      metadata,
-      filepath
+      url: urlData.publicUrl,
+      thumbnailUrl
     }
   }
 
-  // Salvar no banco de dados
-  private async saveToDatabase(
-    processedFile: {
-      filename: string
-      originalName: string
-      url: string
-      thumbnailUrl?: string
-      size: number
-      metadata: ImageMetadata
-      filepath: string
-    }, 
-    options: ImageUploadOptions
-  ): Promise<ImageRecord> {
-    const crypto = await import('crypto')
-    const buffer = await import('fs').then(fs => fs.readFileSync(processedFile.filepath))
-    const hash = crypto.createHash('md5').update(buffer).digest('hex')
+  // Gerar caminho no storage baseado no tipo de imagem
+  private generateStoragePath(options: ImageUploadOptions, filename: string): string {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
 
-    const imageRecord = await prisma.image.create({
-      data: {
-        id: crypto.createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').substring(0, 25),
-        filename: processedFile.filename,
-        originalName: processedFile.originalName,
-        url: processedFile.url,
-        thumbnailUrl: processedFile.thumbnailUrl,
-        size: processedFile.size,
-        type: options.type,
-        entityId: options.entityId,
-        category: options.category,
-        metadata: processedFile.metadata as unknown as object,
-        hash,
-        updatedAt: new Date()
-      }
-    })
-
-    return {
-      id: imageRecord.id,
-      filename: imageRecord.filename,
-      originalName: imageRecord.originalName,
-      url: imageRecord.url,
-      thumbnailUrl: imageRecord.thumbnailUrl || undefined,
-      size: imageRecord.size,
-      type: imageRecord.type as ImageType,
-      entityId: imageRecord.entityId,
-      category: imageRecord.category || undefined,
-      metadata: imageRecord.metadata as unknown as ImageMetadata,
-      createdAt: imageRecord.createdAt,
-      updatedAt: imageRecord.updatedAt
+    switch (options.type) {
+      case ImageType.USER_AVATAR:
+        return `${options.entityId}/${filename}`
+      
+      case ImageType.BUSINESS_LOGO:
+      case ImageType.BUSINESS_BANNER:
+        return `${options.entityId}/${options.type}/${filename}`
+      
+      case ImageType.PRODUCT_IMAGE:
+      case ImageType.CATEGORY_IMAGE:
+        return `${options.entityId}/${filename}`
+      
+      default:
+        return `${year}/${month}/${options.entityId}/${filename}`
     }
+  }
+
+  // Gerar nome único do arquivo
+  private generateFilename(originalName: string): string {
+    const extension = originalName.split('.').pop()?.toLowerCase() || 'jpg'
+    const hash = crypto.randomBytes(16).toString('hex')
+    return `${hash}.${extension}`
   }
 
   // Deletar imagem
-  async deleteImage(imageId: string): Promise<void> {
+  async deleteImage(imageUrl: string, bucket?: string): Promise<void> {
     try {
-      const image = await prisma.image.findUnique({
-        where: { id: imageId }
-      })
-
-      if (!image) {
-        throw new Error('Imagem não encontrada')
-      }
-
-      // Deletar arquivos do sistema
-      const fullPath = join(process.cwd(), 'public', image.url)
-      try {
-        await access(fullPath)
-        await unlink(fullPath)
-      } catch {
-        console.warn(`Arquivo não encontrado: ${fullPath}`)
-      }
-
-      // Deletar thumbnail se existir
-      if (image.thumbnailUrl) {
-        const thumbnailPath = join(process.cwd(), 'public', image.thumbnailUrl)
-        try {
-          await access(thumbnailPath)
-          await unlink(thumbnailPath)
-        } catch {
-          console.warn(`Thumbnail não encontrado: ${thumbnailPath}`)
+      // Extrair informações da URL
+      const url = new URL(imageUrl)
+      const pathSegments = url.pathname.split('/')
+      
+      // Encontrar o bucket e o path
+      let bucketName = bucket
+      let filePath = ''
+      
+      if (!bucketName) {
+        // Tentar inferir o bucket da URL
+        for (const [, config] of Object.entries(IMAGE_CONFIGS)) {
+          if (imageUrl.includes(config.bucket)) {
+            bucketName = config.bucket
+            break
+          }
         }
       }
 
-      // Deletar do banco
-      await prisma.image.delete({
-        where: { id: imageId }
-      })
+      if (!bucketName) {
+        throw new Error('Não foi possível determinar o bucket')
+      }
+
+      // Extrair o path do arquivo
+      const bucketIndex = pathSegments.findIndex(segment => segment === bucketName)
+      if (bucketIndex !== -1) {
+        filePath = pathSegments.slice(bucketIndex + 1).join('/')
+      } else {
+        // Fallback: usar os últimos segmentos
+        filePath = pathSegments.slice(-3).join('/')
+      }
+
+      // Deletar do Supabase Storage
+      const { error } = await this.supabase.storage
+        .from(bucketName)
+        .remove([filePath])
+
+      if (error) {
+        console.error('Erro ao deletar do storage:', error)
+        throw new Error(`Erro ao deletar arquivo: ${error.message}`)
+      }
 
     } catch (error) {
       console.error('Erro ao deletar imagem:', error)
@@ -364,59 +332,48 @@ export class ImageService {
     }
   }
 
-  // Listar imagens por entidade
-  async getImagesByEntity(entityId: string, type?: ImageType): Promise<ImageRecord[]> {
-    const whereClause: { entityId: string; type?: ImageType } = { entityId }
-    if (type) whereClause.type = type
+  // Obter URL assinada (para buckets privados)
+  async getSignedUrl(filePath: string, bucket: string, expiresIn = 3600): Promise<string> {
+    try {
+      const { data, error } = await this.supabase.storage
+        .from(bucket)
+        .createSignedUrl(filePath, expiresIn)
 
-    const images = await prisma.image.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'desc' }
-    })
+      if (error) {
+        throw new Error(`Erro ao gerar URL assinada: ${error.message}`)
+      }
 
-    return images.map((image) => ({
-      id: image.id,
-      filename: image.filename,
-      originalName: image.originalName,
-      url: image.url,
-      thumbnailUrl: image.thumbnailUrl || undefined,
-      size: image.size,
-      type: image.type as ImageType,
-      entityId: image.entityId,
-      category: image.category || undefined,
-      metadata: image.metadata as unknown as ImageMetadata,
-      createdAt: image.createdAt,
-      updatedAt: image.updatedAt
-    }))
+      return data.signedUrl
+    } catch (error) {
+      console.error('Erro ao gerar URL assinada:', error)
+      throw error
+    }
   }
 
-  // Limpar imagens órfãs (sem referência na entidade)
-  async cleanupOrphanedImages(): Promise<void> {
-    // Esta função pode ser executada como job cron
-    console.log('Limpeza de imagens órfãs iniciada...')
-    // Implementar lógica de limpeza baseada nas entidades do sistema
-  }
+  // Listar arquivos em um bucket
+  async listFiles(bucket: string, path?: string): Promise<Array<{
+    name: string
+    id?: string
+    updated_at?: string
+    created_at?: string
+    metadata?: Record<string, unknown>
+  }>> {
+    try {
+      const { data, error } = await this.supabase.storage
+        .from(bucket)
+        .list(path, {
+          limit: 100,
+          offset: 0
+        })
 
-  // Obter estatísticas de uso
-  async getStorageStats(): Promise<{
-    totalImages: number,
-    totalSize: number,
-    sizeByType: Record<string, number>
-  }> {
-    const stats = await prisma.image.groupBy({
-      by: ['type'],
-      _sum: { size: true },
-      _count: true
-    })
+      if (error) {
+        throw new Error(`Erro ao listar arquivos: ${error.message}`)
+      }
 
-    const totalImages = stats.reduce((acc: number, stat) => acc + stat._count, 0)
-    const totalSize = stats.reduce((acc: number, stat) => acc + (stat._sum.size || 0), 0)
-    const sizeByType: Record<string, number> = {}
-
-    stats.forEach((stat) => {
-      sizeByType[stat.type] = stat._sum.size || 0
-    })
-
-    return { totalImages, totalSize, sizeByType }
+      return data || []
+    } catch (error) {
+      console.error('Erro ao listar arquivos:', error)
+      throw error
+    }
   }
 }

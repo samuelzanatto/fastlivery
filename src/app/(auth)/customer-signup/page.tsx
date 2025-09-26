@@ -87,7 +87,7 @@ export default function CustomerSignUpPage() {
     })
   }
 
-  // Função para iniciar verificação de email
+  // Função para iniciar verificação de email usando Better Auth
   const handleStartEmailVerification = async () => {
     if (!formData.email) {
       notify('error', 'Por favor, digite seu email primeiro')
@@ -100,7 +100,7 @@ export default function CustomerSignUpPage() {
       return
     }
 
-    // Enviar OTP antes de abrir o dialog
+    // Usar nossa API customizada para verificar email de novos usuários
     const loadingToast = notify('loading', 'Enviando código de verificação...')
     
     try {
@@ -109,7 +109,9 @@ export default function CustomerSignUpPage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email: formData.email })
+        body: JSON.stringify({ 
+          email: formData.email
+        })
       })
 
       if (!response.ok) {
@@ -177,16 +179,39 @@ export default function CustomerSignUpPage() {
       }
 
       if (data) {
-        // Atualizar campos adicionais via Server Action
+        // Marcar email como verificado usando endpoint específico
         try {
-          const { updateUserProfile } = await import('@/actions/users/profile')
-          await updateUserProfile({
-            phone: formData.phone,
-            emailVerified: true // Marca como verificado
+          const verifyResponse = await fetch('/api/customer/mark-email-verified', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email: formData.email })
           })
+
+          if (!verifyResponse.ok) {
+            console.warn('Erro ao marcar email como verificado:', await verifyResponse.text())
+          }
+
+          // Atualizar campos adicionais se possível
+          const profileResponse = await fetch('/api/customer/update-profile', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userId: data.user?.id,
+              phone: formData.phone
+            })
+          })
+
+          if (!profileResponse.ok) {
+            console.warn('Erro ao atualizar perfil adicional:', await profileResponse.text())
+          }
+
         } catch (updateError) {
           console.warn('Erro ao atualizar perfil adicional:', updateError)
-          // Não bloqueia o fluxo principal, apenas log
+          // Não bloquear o fluxo principal, apenas log
         }
 
         notify('success', 'Conta criada com sucesso!')
@@ -241,7 +266,7 @@ export default function CustomerSignUpPage() {
   return (
     <>
       {/* Modal/Overlay de Verificação de Email */}
-      <EmailOtpVerification
+        <EmailOtpVerification
         open={showEmailVerification}
         email={formData.email}
         onVerified={handleEmailVerified}
@@ -252,9 +277,7 @@ export default function CustomerSignUpPage() {
         verifyEndpoint="/api/customer/verify-verification-otp"
         verificationType="customer"
         autoSend={false}
-      />
-
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      />      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="grid min-h-screen lg:grid-cols-2">
         {/* Left Column - Sign Up Form */}
         <div className="flex items-center justify-center p-8">

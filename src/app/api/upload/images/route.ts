@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/auth'
 import { ImageService } from '@/lib/services/image-service'
 import { ImageType } from '@/lib/services/image-types'
+import { prisma } from '@/lib/database/prisma'
 
 // Force Node.js runtime for file system operations
 export const runtime = 'nodejs'
@@ -51,11 +52,15 @@ export async function POST(request: NextRequest) {
     const imageService = ImageService.getInstance()
     
     // Para avatares de usuário, deletar imagens antigas automaticamente
-    if (imageType === 'user_avatar') {
+  if (imageType === ImageType.USER_AVATAR) {
       try {
-        const existingImages = await imageService.getImagesByEntity(entityId, imageType)
+        const existingImages = await prisma.image.findMany({
+          where: { entityId, type: imageType }
+        })
+        
         for (const existingImage of existingImages) {
-          await imageService.deleteImage(existingImage.id)
+          await imageService.deleteImage(existingImage.url)
+          await prisma.image.delete({ where: { id: existingImage.id } })
         }
       } catch (error) {
         console.error('Erro ao deletar avatares antigos:', error)
@@ -68,6 +73,37 @@ export async function POST(request: NextRequest) {
       entityId,
       category
     })
+
+    // Salvar no banco de dados
+    const crypto = await import('crypto')
+    await prisma.image.create({
+      data: {
+        id: crypto.randomUUID(),
+        filename: uploadedImage.filename,
+        originalName: uploadedImage.originalName,
+        url: uploadedImage.url,
+        thumbnailUrl: uploadedImage.thumbnailUrl,
+        size: uploadedImage.size,
+        type: uploadedImage.type,
+        entityId: uploadedImage.entityId,
+        category: uploadedImage.category,
+        hash: crypto.randomBytes(16).toString('hex'),
+        metadata: uploadedImage.metadata as object,
+        updatedAt: new Date()
+      }
+    })
+
+    // Se for avatar de usuário, atualizar campo image do usuário
+    if (imageType === ImageType.USER_AVATAR) {
+      try {
+        await prisma.user.update({
+          where: { id: entityId },
+          data: { image: uploadedImage.url }
+        })
+      } catch (error) {
+        console.error('Erro ao atualizar campo image do usuário:', error)
+      }
+    }
 
     return NextResponse.json(uploadedImage, { status: 201 })
 
@@ -109,11 +145,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Listar imagens
-    const imageService = ImageService.getInstance()
-    const images = await imageService.getImagesByEntity(
-      entityId, 
-      imageType || undefined
-    )
+    const images = await prisma.image.findMany({
+      where: {
+        entityId,
+        ...(imageType && { type: imageType })
+      },
+      orderBy: { createdAt: 'desc' }
+    })
 
     return NextResponse.json(images)
 
@@ -154,8 +192,37 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Deletar imagem
+    const image = await prisma.image.findUnique({
+      where: { id: imageId }
+    })
+
+    if (!image) {
+      return NextResponse.json(
+        { error: 'Imagem não encontrada' },
+        { status: 404 }
+      )
+    }
+
+    // Deletar do Supabase Storage
     const imageService = ImageService.getInstance()
-    await imageService.deleteImage(imageId)
+    await imageService.deleteImage(image.url)
+
+    // Deletar do banco
+    await prisma.image.delete({
+      where: { id: imageId }
+    })
+
+    // Se era um avatar de usuário, limpar o campo image do usuário
+    if (image.type === ImageType.USER_AVATAR) {
+      try {
+        await prisma.user.update({
+          where: { id: image.entityId },
+          data: { image: null }
+        })
+      } catch (error) {
+        console.error('Erro ao limpar campo image do usuário:', error)
+      }
+    }
 
     return NextResponse.json({ 
       message: 'Imagem deletada com sucesso' 

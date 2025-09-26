@@ -47,7 +47,7 @@ export function EmailOtpVerification({
   onOpenChange,
   sendEndpoint = '/api/signup/send-verification-otp',
   verifyEndpoint = '/api/signup/verify-verification-otp',
-  verificationType = 'signup',
+  verificationType: _verificationType = 'signup',
   autoSend = true
 }: EmailOtpVerificationProps) {
   const [otpCode, setOtpCode] = useState("")
@@ -74,7 +74,7 @@ export function EmailOtpVerification({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email,
-          verificationType 
+          verificationType: _verificationType 
         })
       })
 
@@ -84,7 +84,7 @@ export function EmailOtpVerification({
         notify('success', data.message || 'Código enviado com sucesso!')
         setResendCooldown(60)
       } else {
-        notify('error', data.error || 'Erro ao enviar código')
+        notify('error', data.error || data.message || 'Erro ao enviar código')
       }
     } catch (error) {
       console.error('[EmailOtpVerification] Erro ao enviar OTP:', error)
@@ -92,7 +92,7 @@ export function EmailOtpVerification({
     } finally {
       setResendLoading(false)
     }
-  }, [email, sendEndpoint, verificationType])
+  }, [email, sendEndpoint, _verificationType])
 
   // Função para verificar OTP
   const verifyOtp = useCallback(async () => {
@@ -106,7 +106,7 @@ export function EmailOtpVerification({
         body: JSON.stringify({ 
           email, 
           otp: otpCode,
-          verificationType 
+          verificationType: _verificationType 
         })
       })
 
@@ -120,7 +120,7 @@ export function EmailOtpVerification({
           onVerified()
         }, 1000)
       } else {
-        notify('error', data.error || 'Código inválido')
+        notify('error', data.error || data.message || 'Código inválido')
         setOtpCode("")
       }
     } catch (error) {
@@ -130,7 +130,7 @@ export function EmailOtpVerification({
     } finally {
       setOtpLoading(false)
     }
-  }, [otpCode, email, verifyEndpoint, verificationType, onVerified])
+  }, [otpCode, email, verifyEndpoint, _verificationType, onVerified])
 
   // Cooldown do reenvio
   useEffect(() => {

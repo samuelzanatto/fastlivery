@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ImageUploadDialog } from '@/components/ui/image-upload-dialog'
 import { ImageType } from '@/lib/services/image-types'
 import { DashboardHeader, DashboardHeaderButton } from '@/components/ui/dashboard-header'
+import Image from 'next/image'
 import { 
   Store,
   Clock,
@@ -312,7 +313,7 @@ export default function SettingsPage() {
 
               {/* Profile Picture */}
               <div className="space-y-3">
-                <Label className="text-sm font-medium text-gray-900">Foto do Perfil</Label>
+                <Label className="text-sm font-medium text-gray-900">Logo da Empresa</Label>
                 <div className="flex items-center gap-6">
                   <Avatar className="w-20 h-20">
                     <AvatarImage src={businessSettings.avatar} />
@@ -346,13 +347,92 @@ export default function SettingsPage() {
                       description="Escolha uma imagem para representar sua empresa"
                     >
                       <Button variant="outline" size="sm">
-                        Editar
+                        Editar Logo
                       </Button>
                     </ImageUploadDialog>
                     <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
                       Remover
                     </Button>
                   </div>
+                </div>
+              </div>
+
+              {/* Banner Image */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-gray-900">Banner da Empresa</Label>
+                <div className="space-y-4">
+                  {businessSettings.banner ? (
+                    <div className="relative w-full h-32 bg-gray-100 rounded-lg overflow-hidden">
+                      <Image
+                        src={businessSettings.banner}
+                        alt="Banner da empresa"
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 100vw, 800px"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-32 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <p className="text-gray-500 text-sm">Nenhum banner adicionado</p>
+                    </div>
+                  )}
+                  <div className="space-x-2">
+                    <ImageUploadDialog
+                      entityId={businessSettings.id}
+                      imageType={ImageType.BUSINESS_BANNER}
+                      onImageSelect={async (image) => {
+                        setBusinessSettings(prev => ({
+                          ...prev,
+                          banner: image.url
+                        }))
+                        try {
+                          const result = await updateBusiness({ banner: image.url })
+                          if (result.success) {
+                            notify('success', 'Banner atualizado com sucesso!')
+                          } else {
+                            throw new Error(result.error)
+                          }
+                        } catch (error) {
+                          notify('error', 'Erro ao atualizar banner', { 
+                            description: error instanceof Error ? error.message : 'Erro desconhecido' 
+                          })
+                        }
+                      }}
+                      title="Selecionar Banner da Empresa"
+                      description="Escolha uma imagem de banner para sua empresa (recomendado: 1200x600px)"
+                    >
+                      <Button variant="outline" size="sm">
+                        {businessSettings.banner ? 'Alterar Banner' : 'Adicionar Banner'}
+                      </Button>
+                    </ImageUploadDialog>
+                    {businessSettings.banner && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-red-600 hover:text-red-700"
+                        onClick={async () => {
+                          setBusinessSettings(prev => ({ ...prev, banner: '' }))
+                          try {
+                            const result = await updateBusiness({ banner: '' })
+                            if (result.success) {
+                              notify('success', 'Banner removido com sucesso!')
+                            } else {
+                              throw new Error(result.error)
+                            }
+                          } catch (error) {
+                            notify('error', 'Erro ao remover banner', { 
+                              description: error instanceof Error ? error.message : 'Erro desconhecido' 
+                            })
+                          }
+                        }}
+                      >
+                        Remover Banner
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Recomendamos uma imagem no formato 1200x600 pixels para melhor qualidade
+                  </p>
                 </div>
               </div>
 

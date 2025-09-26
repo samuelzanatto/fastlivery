@@ -18,6 +18,7 @@ export interface UserProfile {
   role: string | null
   emailVerified: boolean
   isActive: boolean
+  image: string | null
 }
 
 export interface UserWithBusiness extends UserProfile {
@@ -57,6 +58,7 @@ export interface ProfileUpdateInput {
   phone?: string
   password?: string
   emailVerified?: boolean
+  image?: string
 }
 
 /**
@@ -77,6 +79,7 @@ async function _getUserProfile(): Promise<ActionResult<UserWithBusiness>> {
         role: true,
         emailVerified: true,
         isActive: true,
+        image: true,
         ownedBusinesses: {
           select: {
             id: true,
@@ -130,6 +133,7 @@ async function _getUserProfile(): Promise<ActionResult<UserWithBusiness>> {
         role: fullUser.role,
         emailVerified: fullUser.emailVerified,
         isActive: fullUser.isActive,
+        image: fullUser.image,
         business: null
       })
     }
@@ -160,6 +164,7 @@ async function _getUserProfile(): Promise<ActionResult<UserWithBusiness>> {
       role: fullUser.role,
       emailVerified: fullUser.emailVerified,
       isActive: fullUser.isActive,
+      image: fullUser.image,
       business
     })
   } catch (error) {
@@ -183,12 +188,14 @@ async function _updateUserProfile(
       email?: string
       phone?: string
       emailVerified?: boolean
+      image?: string
     } = {}
     
     if (input.name !== undefined) updateData.name = input.name
     if (input.email !== undefined) updateData.email = input.email
     if (input.phone !== undefined) updateData.phone = input.phone
     if (input.emailVerified !== undefined) updateData.emailVerified = input.emailVerified
+    if (input.image !== undefined) updateData.image = input.image
 
     // Para senha, será necessário usar BetterAuth API se implementado
     // Por enquanto, focamos nos outros campos
@@ -207,7 +214,8 @@ async function _updateUserProfile(
         phone: true,
         role: true,
         emailVerified: true,
-        isActive: true
+        isActive: true,
+        image: true
       }
     })
 
@@ -239,7 +247,8 @@ async function _getCurrentUser(): Promise<ActionResult<UserProfile>> {
         phone: true,
         role: true,
         emailVerified: true,
-        isActive: true
+        isActive: true,
+        image: true
       }
     })
 
@@ -258,7 +267,8 @@ async function _getCurrentUser(): Promise<ActionResult<UserProfile>> {
       phone: fullUser.phone,
       role: fullUser.role,
       emailVerified: fullUser.emailVerified,
-      isActive: fullUser.isActive
+      isActive: fullUser.isActive,
+      image: fullUser.image
     })
   } catch (error) {
     return handleActionError(error)
