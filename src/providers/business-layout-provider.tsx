@@ -73,15 +73,7 @@ export function BusinessLayoutProvider({ children }: { children: React.ReactNode
   // Carregar dados iniciais
   useEffect(() => {
     if (session && !isLoadingBusiness) {
-      // Usar dados da sessão como fallback inicial
-      setUserProfileData({
-        name: session.user?.name || '',
-        email: session.user?.email || '',
-        image: session.user?.image || undefined,
-        role: session.user?.role || undefined
-      })
-      
-      // Carregar dados atualizados do banco
+      // Carregar dados diretamente do banco
       refreshUserProfile().then(() => {
         setBootstrapped(true)
       })

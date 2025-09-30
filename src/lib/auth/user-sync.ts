@@ -71,12 +71,25 @@ export async function syncUserData(sessionUser: User): Promise<void> {
 
     if (existingUserById) {
       // Atualizar usuário existente
+      // Buscar dados atuais do usuário
+      const currentUser = await prisma.user.findUnique({
+        where: { id: sessionUser.id },
+        select: {
+          name: true,
+          emailVerified: true,
+          image: true
+        }
+      })
+
+      // Atualizar apenas se os dados da sessão forem diferentes dos dados do banco
+      // e não atualizar image se já existir no banco
       await prisma.user.update({
         where: { id: sessionUser.id },
         data: {
-          name: sessionUser.name,
-          emailVerified: sessionUser.emailVerified ?? false,
-          image: sessionUser.image || null,
+          name: sessionUser.name !== currentUser?.name ? sessionUser.name : undefined,
+          emailVerified: sessionUser.emailVerified !== currentUser?.emailVerified ? (sessionUser.emailVerified ?? false) : undefined,
+          // Preservar a imagem do banco se ela existir
+          image: currentUser?.image ? currentUser.image : (sessionUser.image || null)
         }
       })
     } else {

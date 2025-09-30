@@ -128,13 +128,7 @@ async function _uploadUserAvatar(input: {
         where: { entityId, type: ImageType.USER_AVATAR }
       })
       
-      if (existingImages.length > 0) {
-        // Limpar o campo image do usuário antes de deletar
-        await prisma.user.update({
-          where: { id: entityId },
-          data: { image: null }
-        })
-      }
+      // Não limpar o user.image antes do upload para evitar estado inconsistente
       
       for (const existingImage of existingImages) {
         try {
