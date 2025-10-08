@@ -227,6 +227,11 @@ export default function LoginPage() {
                         <Eye className="h-4 w-4" />
                       )}
                     </button>
+                    <div className="flex justify-end mt-1">
+                      <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline" onClick={() => handleNavigation('/forgot-password')}>
+                        Esqueceu a senha?
+                      </Link>
+                    </div>
                   </div>
                 </motion.div>
                 

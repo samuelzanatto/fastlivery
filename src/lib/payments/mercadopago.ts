@@ -656,8 +656,57 @@ export async function createMercadoPagoService(businessId: string): Promise<Merc
     throw new Error('Mercado Pago não configurado para este negócio')
   }
 
+  // Se houver refresh token e o token estiver expirado (campo mercadoPagoExpiresAt), tentar renovar
+  const businessFull = await prisma.business.findUnique({ where: { id: businessId }, select: { mercadoPagoAccessToken: true, mercadoPagoRefreshToken: true, mercadoPagoExpiresAt: true, mercadoPagoConfigured: true } })
+
+  let accessTokenToUse = businessFull?.mercadoPagoAccessToken || ''
+
+  try {
+    const expiresAt = businessFull?.mercadoPagoExpiresAt
+    const now = new Date()
+    const willExpireSoon = expiresAt ? (new Date(expiresAt).getTime() - now.getTime()) < (5 * 60 * 1000) : false // 5 minutos
+
+    if (willExpireSoon && businessFull?.mercadoPagoRefreshToken) {
+      // Tentar refresh
+      const res = await fetch('https://api.mercadopago.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.MERCADOPAGO_CLIENT_ID || '',
+          client_secret: process.env.MERCADOPAGO_CLIENT_SECRET || '',
+          grant_type: 'refresh_token',
+          refresh_token: businessFull.mercadoPagoRefreshToken || ''
+        })
+      })
+
+      if (res.ok) {
+        const json = await res.json()
+        const expiresIn = json.expires_in ? parseInt(String(json.expires_in), 10) : undefined
+        const expiresAtNew = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null
+
+        // Persistir novos tokens
+        await prisma.business.update({
+          where: { id: businessId },
+          data: {
+            mercadoPagoAccessToken: json.access_token || null,
+            mercadoPagoRefreshToken: json.refresh_token || null,
+            mercadoPagoPublicKey: json.public_key || null,
+            mercadoPagoExpiresAt: expiresAtNew || null,
+            mercadoPagoConfigured: true
+          }
+        })
+
+        accessTokenToUse = json.access_token || accessTokenToUse
+      } else {
+        console.warn('Falha no refresh token Mercado Pago ao criar serviço')
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao tentar refresh automático do token Mercado Pago', err)
+  }
+
   // Criar o serviço passando as credenciais do negócio
-  return new MercadoPagoService(business.mercadoPagoAccessToken)
+  return new MercadoPagoService(accessTokenToUse)
 }
 
 /**

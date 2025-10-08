@@ -534,9 +534,15 @@ function SignupPageContent() {
     }
 
     // Enviar OTP antes de abrir o dialog
-    const loadingToast = notify('loading', 'Enviando código de verificação...')
+    let loadingToast: string | number | undefined = undefined
+    let loadingTimeout: NodeJS.Timeout | undefined = undefined
     
     try {
+      // Iniciar timeout para mostrar loading após 200ms
+      loadingTimeout = setTimeout(() => {
+        loadingToast = notify('loading', 'Enviando código de verificação...')
+      }, 200)
+      
       const response = await fetch('/api/signup/send-verification-otp', {
         method: 'POST',
         headers: {
@@ -545,17 +551,39 @@ function SignupPageContent() {
         body: JSON.stringify({ email })
       })
 
+      // Limpar timeout
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout)
+      }
+
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Erro ao enviar código')
       }
-
-      notify('success', 'Código enviado para seu email!', { id: loadingToast })
+      
+      // Se já mostrou loading, atualizar para success, senão mostrar success diretamente
+      if (loadingToast) {
+        notify('success', 'Código enviado para seu email!', { id: loadingToast })
+      } else {
+        notify('success', 'Código enviado para seu email!')
+      }
+      
       setShowEmailVerification(true)
       
     } catch (error) {
       console.error('Erro ao enviar OTP:', error)
-      notify('error', error instanceof Error ? error.message : 'Erro ao enviar código', { id: loadingToast })
+      
+      // Limpar timeout se ainda estiver ativo
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout)
+      }
+      
+      // Se há loading toast, substituir por erro, senão mostrar erro diretamente
+      if (loadingToast) {
+        notify('error', error instanceof Error ? error.message : 'Erro ao enviar código', { id: loadingToast })
+      } else {
+        notify('error', error instanceof Error ? error.message : 'Erro ao enviar código')
+      }
     }
   }
 

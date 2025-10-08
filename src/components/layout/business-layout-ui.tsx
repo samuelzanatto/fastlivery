@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { 
@@ -67,16 +67,34 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { data: session, isPending: sessionPending } = useSession()
-  const { loading: isLoadingBusiness, permissions } = useBusinessContext()
+  const { permissions, loading: businessLoading, initialized: businessInitialized } = useBusinessContext()
   const { isOwner } = permissions
   const {
     userProfileData,
     avatarKey,
-    bootstrapped
+    isLoading
   } = useBusinessLayout()
 
-  // Determinar se está carregando
-  const isLoading = sessionPending || !bootstrapped || isLoadingBusiness
+  // Track initial load: queremos mostrar skeletons apenas no primeiro carregamento
+  // Considera tanto o carregamento do layout (isLoading) quanto o carregamento
+  // do contexto de negócio (businessLoading). Só desligamos o initialLoad quando
+  // ambos estiverem prontos.
+  const [initialLoad, setInitialLoad] = useState(true)
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null
+    // Só desliga o initialLoad quando ambos os carregamentos terminarem e
+    // o store estiver inicializado (para evitar flashes quando membershipRole
+    // chega logo depois do primeiro fetch)
+    if (!isLoading && !businessLoading && businessInitialized) {
+      t = setTimeout(() => setInitialLoad(false), 120)
+    }
+    return () => {
+      if (t) clearTimeout(t)
+    }
+  }, [isLoading, businessLoading, businessInitialized])
+
+  // Early return se não houver sessão ou a sessão ainda estiver pendente
+  if (!session || sessionPending) return null
 
   // Função para verificar permissões baseada no novo sistema
   const hasPermission = (resource: string, action: string) => {
@@ -137,10 +155,6 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
     return hasPermission(item.resource, item.action)
   })
 
-  if (!session) {
-    return null
-  }
-
   return (
     <div className="h-screen bg-white flex overflow-hidden">
       {/* Sidebar */}
@@ -166,8 +180,8 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-4 pt-1 pb-4 space-y-2 overflow-y-auto scrollbar-hide">
-          {isLoading ? (
-            // Skeleton para itens da sidebar durante o carregamento
+          {initialLoad ? (
+            // Skeleton para itens da sidebar apenas no carregamento inicial
             <>
               {Array.from({ length: 8 }).map((_, index) => (
                 <div key={index} className="flex items-center space-x-3 px-3 py-2">
@@ -203,7 +217,7 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
         <div className="p-4 border-t border-slate-200 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 flex-1">
-              {isLoading ? (
+              {initialLoad ? (
                 <>
                   <Skeleton className="w-8 h-8 rounded-full" />
                   <div className="flex-1 min-w-0">
@@ -235,7 +249,8 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
               )}
             </div>
             
-            {!isLoading && (
+            {/* Mostrar o menu de ações apenas após o carregamento inicial */}
+            {!initialLoad ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -266,7 +281,7 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -337,8 +352,8 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
 
         {/* Page Content - Scrollable */}
         <main className="flex-1 overflow-y-auto scrollbar-hide">
-          {isLoading ? (
-            // Skeleton para conteúdo principal durante o carregamento
+          {initialLoad ? (
+            // Skeleton para conteúdo principal apenas no carregamento inicial
             <div className="p-6 space-y-6">
               {/* Header skeleton */}
               <div className="flex items-center justify-between">

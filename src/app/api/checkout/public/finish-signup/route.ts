@@ -81,6 +81,25 @@ export async function POST(request: NextRequest) {
     
     if (user) {
       console.log('[finish-signup] Usuário já existe, verificando se processo está completo:', user.email)
+      
+      // SECURITY CHECK: Impedir conflito de roles - proteger TODOS os tipos de conta ativa
+      const requestedOwnerRole = companyType === 'supplier' ? 'supplierOwner' : 'businessOwner'
+      
+      if (user.isActive && user.role && user.role !== requestedOwnerRole) {
+        console.log(`[finish-signup] SECURITY ERROR: Tentativa de alterar role de ${user.role} para ${requestedOwnerRole} para email ${user.email}`)
+        
+        let errorMessage = 'Este email já está em uso.'
+        if (user.role === 'customer') {
+          errorMessage = 'Este email já está associado a uma conta de cliente. Use um email diferente ou faça login na conta existente.'
+        } else if (user.role === 'businessOwner') {
+          errorMessage = 'Este email já está associado a uma conta de empresa. Use um email diferente ou faça login na conta existente.'
+        } else if (user.role === 'supplierOwner') {
+          errorMessage = 'Este email já está associado a uma conta de fornecedor. Use um email diferente ou faça login na conta existente.'
+        }
+        
+        return NextResponse.json({ error: errorMessage }, { status: 409 })
+      }
+      
       // Verificar se o usuário tem uma empresa/supplier ativa
       let hasActiveEntity = false
       if (companyType === 'supplier') {
@@ -159,14 +178,25 @@ export async function POST(request: NextRequest) {
     }
     
     // Definir role correto baseado no tipo de empresa
-    let userRole = 'customer'
-    if (companyType === 'supplier') {
-      userRole = 'supplierOwner'
-    } else if (companyType === 'delivery_company') {
-      userRole = 'businessOwner'
+    let userRole = user.role || 'customer'
+    
+    // SECURITY: Só alterar o role se for um usuário completamente novo (sem role ou temporário)
+    const canChangeRole = (!user.role || user.name === 'Usuário Temporário') && !user.isActive
+    
+    if (canChangeRole) {
+      if (companyType === 'supplier') {
+        userRole = 'supplierOwner'
+      } else if (companyType === 'delivery_company') {
+        userRole = 'businessOwner'
+      }
+      console.log('[finish-signup] Definindo role para usuário novo:', user.email, 'Role:', userRole)
+    } else {
+      console.log('[finish-signup] Usuário já tem role/conta ativa:', user.role, 'isActive:', user.isActive)
+      // Manter o role existente para usuários que já têm conta
+      userRole = user.role || 'customer'
     }
     
-    // Atualizar dados específicos do checkout incluindo role
+    // Atualizar dados específicos do checkout (sem forçar alteração de role)
     user = await prisma.user.update({
       where: { id: user.id },
       data: {

@@ -2,21 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Calendar, 
-  Clock, 
-  DollarSign, 
-  CheckCircle, 
-  XCircle, 
-  Send,
-  Building2,
-  Mail,
-  ExternalLink,
+import {
   AlertCircle,
+  ExternalLink,
+  Calendar,
+  Mail,
+  DollarSign,
   Trash2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -29,8 +24,7 @@ import {
   getPartnershipRequests,
   getSupplierPartnershipRequests,
   respondToPartnershipRequest,
-  cancelPartnershipRequest,
-  getPartnershipRequestStats
+  cancelPartnershipRequest
 } from '@/actions/partnerships/manage-partnership-requests'
 
 interface PartnershipRequestsProps {
@@ -52,25 +46,14 @@ const statusLabels = {
 export function PartnershipRequests({ userType }: PartnershipRequestsProps) {
   const [requests, setRequests] = useState<PartnershipRequest[]>([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({
-    sent: 0,
-    received: 0,
-    pending: 0,
-    approved: 0,
-    rejected: 0
-  })
+
   const [responseDialogOpen, setResponseDialogOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<PartnershipRequest | null>(null)
   const [responseText, setResponseText] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    const loadData = async () => {
-      await loadRequests()
-      await loadStats()
-    }
-    
-    loadData()
+    loadRequests()
   }, [userType]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadRequests = async () => {
@@ -89,14 +72,7 @@ export function PartnershipRequests({ userType }: PartnershipRequestsProps) {
     }
   }
 
-  const loadStats = async () => {
-    try {
-      const data = await getPartnershipRequestStats()
-      setStats(data)
-    } catch (error) {
-      console.error(error)
-    }
-  }
+
 
   const handleResponse = async (status: 'APPROVED' | 'REJECTED') => {
     if (!selectedRequest) return
@@ -115,7 +91,6 @@ export function PartnershipRequests({ userType }: PartnershipRequestsProps) {
         setResponseText('')
         setSelectedRequest(null)
         loadRequests()
-        loadStats()
       } else {
         toast.error(result.message)
       }
@@ -134,7 +109,6 @@ export function PartnershipRequests({ userType }: PartnershipRequestsProps) {
       if (result.success) {
         toast.success(result.message)
         loadRequests()
-        loadStats()
       } else {
         toast.error(result.message)
       }
@@ -183,105 +157,26 @@ export function PartnershipRequests({ userType }: PartnershipRequestsProps) {
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Send className="h-4 w-4 text-blue-600" />
-              <div className="ml-2">
-                <p className="text-sm text-muted-foreground">
-                  {userType === 'supplier' ? 'Recebidas' : 'Enviadas'}
-                </p>
-                <p className="text-2xl font-bold">
-                  {userType === 'supplier' ? stats.received : stats.sent}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Clock className="h-4 w-4 text-yellow-600" />
-              <div className="ml-2">
-                <p className="text-sm text-muted-foreground">Pendentes</p>
-                <p className="text-2xl font-bold">{stats.pending}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <div className="ml-2">
-                <p className="text-sm text-muted-foreground">Aprovadas</p>
-                <p className="text-2xl font-bold">{stats.approved}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <XCircle className="h-4 w-4 text-red-600" />
-              <div className="ml-2">
-                <p className="text-sm text-muted-foreground">Rejeitadas</p>
-                <p className="text-2xl font-bold">{stats.rejected}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Building2 className="h-4 w-4 text-purple-600" />
-              <div className="ml-2">
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-2xl font-bold">
-                  {userType === 'supplier' ? stats.received : stats.sent}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      
 
       {/* Lista de Solicitações */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {userType === 'supplier' ? 'Solicitações Recebidas' : 'Solicitações Enviadas'}
-          </CardTitle>
-          <CardDescription>
-            {userType === 'supplier' 
-              ? 'Gerencie as solicitações de parceria recebidas de empresas'
-              : 'Acompanhe suas solicitações de parceria enviadas para fornecedores'
-            }
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="pending" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="pending">
-                Pendentes ({pendingRequests.length})
-              </TabsTrigger>
-              <TabsTrigger value="approved">
-                Aprovadas ({approvedRequests.length})
-              </TabsTrigger>
-              <TabsTrigger value="rejected">
-                Rejeitadas ({rejectedRequests.length})
-              </TabsTrigger>
-            </TabsList>
+      <div className="space-y-6">
+        <Tabs defaultValue="pending" className="w-full">
+          <TabsList>
+            <TabsTrigger value="pending">Pendentes ({pendingRequests.length})</TabsTrigger>
+            <TabsTrigger value="approved">Aprovadas ({approvedRequests.length})</TabsTrigger>
+            <TabsTrigger value="rejected">Rejeitadas ({rejectedRequests.length})</TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="pending" className="mt-6">
-              <RequestsList
-                requests={pendingRequests}
+          <TabsContent value="pending" className="mt-6">
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-muted-foreground">Carregando solicitações...</p>
+              </div>
+            ) : (
+              <RequestsList 
+                requests={pendingRequests} 
                 userType={userType}
                 onResponse={(request) => {
                   setSelectedRequest(request)
@@ -289,24 +184,34 @@ export function PartnershipRequests({ userType }: PartnershipRequestsProps) {
                 }}
                 onCancel={handleCancel}
               />
-            </TabsContent>
+            )}
+          </TabsContent>
 
-            <TabsContent value="approved" className="mt-6">
-              <RequestsList
-                requests={approvedRequests}
-                userType={userType}
-              />
-            </TabsContent>
+          <TabsContent value="approved" className="mt-6">
+            <RequestsList 
+              requests={approvedRequests} 
+              userType={userType}
+              onResponse={(request) => {
+                setSelectedRequest(request)
+                setResponseDialogOpen(true)
+              }}
+              onCancel={handleCancel}
+            />
+          </TabsContent>
 
-            <TabsContent value="rejected" className="mt-6">
-              <RequestsList
-                requests={rejectedRequests}
-                userType={userType}
-              />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+          <TabsContent value="rejected" className="mt-6">
+            <RequestsList 
+              requests={rejectedRequests} 
+              userType={userType}
+              onResponse={(request) => {
+                setSelectedRequest(request)
+                setResponseDialogOpen(true)
+              }}
+              onCancel={handleCancel}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* Dialog de Resposta */}
       <Dialog open={responseDialogOpen} onOpenChange={setResponseDialogOpen}>

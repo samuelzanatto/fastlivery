@@ -11,6 +11,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email e código obrigatórios' }, { status: 400 })
     }
 
+    // SECURITY CHECK: Verificar se email já está em uso por qualquer usuário ativo
+    const existingUser = await prisma.user.findUnique({ 
+      where: { email: email.toLowerCase() } 
+    })
+    
+    if (existingUser && existingUser.isActive && existingUser.role) {
+      console.log(`[customer-verify-otp] SECURITY ERROR: Email ${email} já em uso por usuário ativo com role ${existingUser.role}`)
+      
+      let errorMessage = 'Este email já está em uso.'
+      if (existingUser.role === 'customer') {
+        errorMessage = 'Este email já está associado a uma conta de cliente. Faça login na sua conta existente.'
+      } else if (existingUser.role === 'businessOwner') {
+        errorMessage = 'Este email já está associado a uma conta de empresa. Faça login na sua conta existente.'
+      } else if (existingUser.role === 'supplierOwner') {
+        errorMessage = 'Este email já está associado a uma conta de fornecedor. Faça login na sua conta existente.'
+      }
+      
+      return NextResponse.json({ error: errorMessage, code: 'EMAIL_IN_USE' }, { status: 409 })
+    }
+
     // Buscar verificação no banco (com prefixo customer)
     const verification = await prisma.verification.findUnique({
       where: { id: `customer:${email}` }

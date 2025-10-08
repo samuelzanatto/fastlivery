@@ -1,89 +1,98 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+'use client'
+
+import { createContext, useContext, useState } from 'react'
+import useSWR from 'swr'
 import { useSession } from '@/lib/auth/auth-client'
-import { useBusinessContext } from '@/hooks/business/use-business-context'
+
+interface UserProfileData {
+  name: string
+  email: string
+  image: string | undefined
+  role: string | undefined
+}
 
 interface BusinessLayoutContextData {
-  userProfileData: {
-    name: string
-    email: string
-    image?: string
-    role?: string
-  }
+  userProfileData: UserProfileData
   avatarKey: number
-  bootstrapped: boolean
+  isLoading: boolean
+  error: Error | null
   refreshAvatar: () => void
-  refreshUserProfile: () => Promise<void>
+  refreshUserProfile: () => void
+}
+
+const defaultProfileData: UserProfileData = {
+  name: '',
+  email: '',
+  image: undefined,
+  role: undefined
 }
 
 const BusinessLayoutContext = createContext<BusinessLayoutContextData>({
-  userProfileData: {
-    name: '',
-    email: '',
-    image: undefined,
-    role: undefined
-  },
+  userProfileData: defaultProfileData,
   avatarKey: 0,
-  bootstrapped: false,
+  isLoading: true,
+  error: null,
   refreshAvatar: () => {},
-  refreshUserProfile: async () => {}
+  refreshUserProfile: () => {}
 })
+
+async function fetchUserProfile(): Promise<UserProfileData> {
+  const { getCurrentUser } = await import('@/actions/users/profile')
+  const result = await getCurrentUser()
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to fetch user profile')
+  }
+
+  return {
+    name: result.data?.name || '',
+    email: result.data?.email || '',
+    image: result.data?.image || undefined,
+    role: result.data?.role || undefined
+  }
+}
 
 export function BusinessLayoutProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
-  const { loading: isLoadingBusiness } = useBusinessContext()
-  
   const [avatarKey, setAvatarKey] = useState(0)
-  const [bootstrapped, setBootstrapped] = useState(false)
-  const [userProfileData, setUserProfileData] = useState({
-    name: '',
-    email: '',
-    image: undefined as string | undefined,
-    role: undefined as string | undefined
-  })
+  
+  // Usar SWR para fazer cache dos dados do usuário
+  const { 
+    data: userProfileData, 
+    error,
+    isLoading,
+    mutate
+  } = useSWR<UserProfileData>(
+    session ? '/api/profile' : null,
+    () => fetchUserProfile(),
+    {
+      revalidateOnFocus: false, // Não revalidar ao focar a janela
+      revalidateOnReconnect: false, // Não revalidar ao reconectar
+      dedupingInterval: 60000, // Deduplicar requisições por 1 minuto
+      fallbackData: defaultProfileData // Dados padrão enquanto carrega
+    }
+  )
 
-  // Função para forçar atualização do avatar
-  const refreshAvatar = useCallback(() => {
+  const refreshAvatar = () => {
     setAvatarKey(prev => prev + 1)
-  }, [])
+  }
 
-  // Função para recarregar dados do perfil do usuário
-  const refreshUserProfile = useCallback(async () => {
-    if (!session) return
-
-    try {
-      const { getCurrentUser } = await import('@/actions/users/profile')
-      const result = await getCurrentUser()
-      
-      if (result.success && result.data) {
-        setUserProfileData({
-          name: result.data.name || '',
-          email: result.data.email || '',
-          image: result.data.image || undefined,
-          role: result.data.role || undefined
-        })
-        refreshAvatar()
-      }
-    } catch (error) {
-      console.error('Error refreshing user profile:', error)
-    }
-  }, [session, refreshAvatar])
-
-  // Carregar dados iniciais
-  useEffect(() => {
-    if (session && !isLoadingBusiness) {
-      // Carregar dados diretamente do banco
-      refreshUserProfile().then(() => {
-        setBootstrapped(true)
-      })
-    }
-  }, [session, isLoadingBusiness, refreshUserProfile])
+  const refreshUserProfile = () => {
+    mutate()
+  }
 
   const value = {
-    userProfileData,
+    userProfileData: userProfileData || {
+      name: '',
+      email: '',
+      image: undefined,
+      role: undefined
+    },
     avatarKey,
-    bootstrapped,
+    isLoading,
+    error,
     refreshAvatar,
     refreshUserProfile
   }

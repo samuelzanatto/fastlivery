@@ -17,20 +17,32 @@ const nextConfig: NextConfig = {
   },
 
   // Configurações para reduzir Fast Refresh excessivo em desenvolvimento
-  ...(process.env.NODE_ENV === 'development' && {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    webpack: (config: Record<string, any>, { dev }: { dev: boolean }) => {
-      if (dev) {
-        // Reduzir sensibilidade do Fast Refresh
-        config.watchOptions = {
-          poll: 1000, // Poll a cada 1 segundo ao invés de filesystem events
-          aggregateTimeout: 300, // Aguardar 300ms antes de rebuild
-          ignored: /node_modules/
-        }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  webpack: (config: Record<string, any>, { dev }: { dev: boolean }) => {
+    if (dev) {
+      // Reduzir sensibilidade do Fast Refresh
+      config.watchOptions = {
+        poll: 1000, // Poll a cada 1 segundo ao invés de filesystem events
+        aggregateTimeout: 300, // Aguardar 300ms antes de rebuild
+        ignored: /node_modules/
       }
-      return config
     }
-  }),
+
+    // Configurações específicas para Supabase
+    config.resolve = config.resolve || {}
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+      crypto: false,
+    }
+
+    // Otimizações para ESM modules
+    config.externals = [...(config.externals || []), 'ws', 'bufferutil', 'utf-8-validate']
+
+    return config
+  },
 
   // Configuração para permitir recursos do Mercado Pago
   async headers() {

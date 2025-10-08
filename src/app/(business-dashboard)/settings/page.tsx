@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import ReactQRCode from 'react-qr-code'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Input as FormattedInput } from '@/components/ui/input-formatted'
@@ -21,9 +22,9 @@ import {
   CreditCard
 } from 'lucide-react'
 import { useSession } from '@/lib/auth/auth-client'
-import { useBusinessFull, useBusinessId } from '@/stores/business-store'
+import { useBusinessFull, useBusinessId, useBusinessStore } from '@/stores/business-store'
 import { useAutoOpenClose } from '@/hooks/business/use-auto-open-close'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { notify } from '@/lib/notifications/notify'
 import { slugify } from '@/lib/utils/formatters'
 import { updateBusiness, updateBusinessStatus } from '@/actions/business/business'
@@ -151,6 +152,21 @@ export default function SettingsPage() {
         deliveryFee: business.deliveryFee ?? prev.deliveryFee,
         deliveryTime: business.deliveryTime ?? prev.deliveryTime,
       }))
+      // Preencher pagamentos
+      type BusinessPaymentFields = {
+        mercadoPagoConfigured?: boolean | null
+        mercadoPagoPublicKey?: string | null
+        mercadoPagoAccessToken?: string | null
+      }
+      const b = (business as unknown as BusinessPaymentFields) || {}
+      setPayments({
+        acceptsCash: true,
+        acceptsCard: true,
+        acceptsPix: true,
+        mercadoPagoEnabled: b.mercadoPagoConfigured ?? false,
+        mercadoPagoPublicKey: b.mercadoPagoPublicKey || '',
+        mercadoPagoAccessToken: b.mercadoPagoAccessToken || ''
+      })
       // Parse openingHours JSON
       try {
         if (business.openingHours && business.openingHours.trim().startsWith('{')) {
@@ -184,6 +200,10 @@ export default function SettingsPage() {
         acceptsPickup: businessSettings.acceptsPickup,
         acceptsDineIn: businessSettings.acceptsDineIn,
         openingHours: JSON.stringify(hours),
+        // Pagamentos
+        mercadoPagoConfigured: payments.mercadoPagoEnabled,
+        mercadoPagoPublicKey: payments.mercadoPagoPublicKey || null,
+        mercadoPagoAccessToken: payments.mercadoPagoAccessToken || null,
       })
       
       if (!result.success) {
@@ -198,6 +218,48 @@ export default function SettingsPage() {
       notify('error', 'Erro ao salvar', { description: error instanceof Error ? error.message : 'Não foi possível salvar as configurações' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Mercado Pago connect flow
+  const [mpConnecting, setMpConnecting] = useState(false)
+  const [mpAuthUrl, setMpAuthUrl] = useState<string | null>(null)
+  const { refreshBusiness } = useBusinessStore()
+  const searchParams = useSearchParams()
+
+  // Se voltamos do fluxo de Mercado Pago com mp=connected, revalidar os dados do negócio
+  useEffect(() => {
+    try {
+      const mp = searchParams?.get?.('mp')
+      if (mp === 'connected') {
+        refreshBusiness().catch(() => {})
+        notify('success', 'Mercado Pago conectado', { description: 'A conta Mercado Pago foi conectada.' })
+        router.replace('/dashboard/settings')
+      }
+    } catch {
+      // noop
+    }
+  }, [searchParams, refreshBusiness, router])
+
+  const handleConnectMercadoPago = async () => {
+    setMpConnecting(true)
+    try {
+      const res = await fetch('/api/mercadopago/connect')
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || 'Erro')
+
+      // Use the official authorization URL returned by the API.
+      // This is the documented OAuth authorization endpoint and is the
+      // recommended flow (the provider will decide whether to open app or web).
+      if (json.url) {
+        setMpAuthUrl(json.url)
+      } else {
+        throw new Error('Resposta inválida do servidor')
+      }
+    } catch (error) {
+      notify('error', 'Erro', { description: error instanceof Error ? error.message : 'Não foi possível iniciar conexão' })
+    } finally {
+      setMpConnecting(false)
     }
   }
 
@@ -495,6 +557,8 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {/* Payments tab consolidated below (removed duplicate earlier UI) */}
+
           {activeTab === 'delivery' && (
             <div className="space-y-8">
               <div>
@@ -700,6 +764,71 @@ export default function SettingsPage() {
                         <li>3. Copie as credenciais de teste ou produção</li>
                         <li>4. Cole as chaves nos campos abaixo</li>
                       </ol>
+                    </div>
+
+                    {/* Consolidated connect + QR layout */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-900">Conectar Conta</h5>
+                            <p className="text-sm text-gray-500">Clique em conectar para iniciar o fluxo OAuth. Depois de autorizar, você será redirecionado para completar a integração.</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <Button onClick={handleConnectMercadoPago} disabled={mpConnecting}>
+                            {mpConnecting ? 'Conectando...' : (payments.mercadoPagoEnabled ? 'Conectar Mercado Pago' : 'Conectar Mercado Pago')}
+                          </Button>
+
+                          <a href={mpAuthUrl || '#'} target="_blank" rel="noreferrer">
+                            <Button variant="outline">Abrir no navegador</Button>
+                          </a>
+
+                          <Button variant="ghost" onClick={async () => {
+                            try {
+                              const r = await fetch('/api/mercadopago/refresh', { method: 'POST' })
+                              const j = await r.json()
+                              if (!j.success) throw new Error(j.error || 'Erro')
+                              notify('success', 'Token renovado', { description: 'Token do Mercado Pago renovado com sucesso' })
+                            } catch (e) {
+                              notify('error', 'Erro', { description: e instanceof Error ? e.message : 'Não foi possível renovar token' })
+                            }
+                          }}>Renovar token</Button>
+
+                          <Button variant="destructive" onClick={async () => {
+                            try {
+                              const r = await fetch('/api/mercadopago/disconnect', { method: 'POST' })
+                              const j = await r.json()
+                              if (!j.success) throw new Error(j.error || 'Erro')
+                              notify('success', 'Desconectado', { description: 'Conta Mercado Pago desconectada' })
+                            } catch (e) {
+                              notify('error', 'Erro', { description: e instanceof Error ? e.message : 'Não foi possível desconectar' })
+                            }
+                          }}>Desconectar</Button>
+                        </div>
+
+                        <div className="mt-2">
+                          <p className="text-xs text-gray-500">Se preferir, copie o link e compartilhe no celular:</p>
+                          <div className="mt-2 flex items-center space-x-2">
+                            <input readOnly value={mpAuthUrl || ''} className="flex-1 input bg-white border-gray-200 rounded px-2 py-1 text-sm" />
+                            <Button onClick={() => {
+                              if (mpAuthUrl) navigator.clipboard.writeText(mpAuthUrl).then(() => notify('success','Copiado', { description: 'Link copiado para a área de transferência' })).catch(()=>{})
+                            }}>Copiar</Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-center">
+                        {mpAuthUrl ? (
+                          <div className="bg-white p-4 rounded-md shadow">
+                            <ReactQRCode value={mpAuthUrl} size={240} />
+                            <p className="text-xs text-gray-500 mt-2 text-center">Escaneie com a câmera do celular</p>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-sm text-gray-500">QR será exibido aqui após iniciar o fluxo</div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-6">

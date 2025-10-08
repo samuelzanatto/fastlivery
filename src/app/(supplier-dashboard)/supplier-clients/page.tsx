@@ -1,73 +1,112 @@
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect, useState } from 'react'
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { DashboardHeader } from "@/components/ui/dashboard-header"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { 
   Building2, 
-  Star, 
   Eye,
   MessageSquare,
   MoreVertical
 } from "lucide-react"
+import { useSession } from '@/lib/auth/auth-client'
+import { useRouter } from 'next/navigation'
+import { notify } from '@/lib/notifications/notify'
+import { getPartnerships } from '@/actions/partnerships/partnerships'
+import type { Partnership } from '@/actions/partnerships/partnerships'
+
+
 
 export default function SupplierClients() {
-  // Mock data - substituir por dados reais
-  const clients = [
-    {
-      id: "1",
-      name: "Restaurante Bella Vista",
-      type: "Restaurante Italiano",
-      orders: 45,
-      totalValue: 12500.00,
-      rating: 4.8,
-      status: "Ativo",
-      joinDate: "2023-08-15"
-    },
-    {
-      id: "2", 
-      name: "Pizzaria do Centro",
-      type: "Pizzaria",
-      orders: 32,
-      totalValue: 8900.00,
-      rating: 4.6,
-      status: "Ativo",
-      joinDate: "2023-09-20"
-    },
-    {
-      id: "3",
-      name: "Lanchonete Express",
-      type: "Fast Food",
-      orders: 28,
-      totalValue: 6200.00,
-      rating: 4.3,
-      status: "Inativo",
-      joinDate: "2023-07-10"
-    }
-  ]
+  const { data: session, isPending } = useSession()
+  const router = useRouter()
+  const [clients, setClients] = useState<Partnership[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
 
-  const getStatusBadge = (status: string) => {
+
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.push('/login')
+    }
+  }, [session, isPending, router])
+
+  const loadClients = async () => {
+    setLoading(true)
+    try {
+      const partnershipsResult = await getPartnerships({})
+      
+      if (partnershipsResult.success) {
+        setClients(partnershipsResult.data || [])
+      } else {
+        throw new Error(partnershipsResult.error)
+      }
+      
+
+    } catch (error) {
+      console.error('Erro ao carregar clientes:', error)
+      notify('error', 'Erro ao carregar clientes', {
+        description: error instanceof Error ? error.message : 'Erro desconhecido'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (session) {
+      loadClients()
+    }
+  }, [session])
+
+  const filteredClients = clients.filter(client => {
+    const supplierName = client.supplier?.company?.name || ''
+    return supplierName.toLowerCase().includes(searchTerm.toLowerCase())
+  })
+
+  if (isPending) {
+    return null
+  }
+
+  if (!session) {
+    return null
+  }
+
+  const getStatusBadge = (status: Partnership['status']) => {
     switch (status) {
-      case 'Ativo':
+      case 'ACTIVE':
         return <Badge variant="outline" className="text-green-600 border-green-600">Ativo</Badge>
-      case 'Inativo':
-        return <Badge variant="outline" className="text-gray-600 border-gray-600">Inativo</Badge>
+      case 'SUSPENDED':
+        return <Badge variant="outline" className="text-gray-600 border-gray-600">Suspenso</Badge>
+      case 'PENDING':
+        return <Badge variant="outline" className="text-yellow-600 border-yellow-600">Pendente</Badge>
+      case 'TERMINATED':
+        return <Badge variant="outline" className="text-red-600 border-red-600">Terminado</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
   }
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value)
+
+
+  const formatDate = (date: Date) => {
+    return new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date)
   }
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('pt-BR')
+  const handleViewClient = (clientId: string) => {
+    router.push(`/supplier-clients/${clientId}`)
+  }
+
+  const handleMessageClient = (clientId: string) => {
+    router.push(`/whatsapp?clientId=${clientId}`)
   }
 
   return (
@@ -78,82 +117,56 @@ export default function SupplierClients() {
         description="Gerencie seu relacionamento com clientes parceiros"
       />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Total de Clientes</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold">23</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Clientes Ativos</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold text-green-600">18</div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Novos Este Mês</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold text-blue-600">5</div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600">Avaliação Média</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="text-2xl font-bold text-yellow-600">4.6</div>
-          </CardContent>
-        </Card>
+      {/* Filtros */}
+      <div className="flex gap-4">
+        <div className="flex-1">
+          <Input
+            placeholder="Buscar clientes..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+        </div>
       </div>
 
       {/* Clients List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista de Clientes</CardTitle>
-          <CardDescription>Seus clientes parceiros no marketplace</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <div className="space-y-6">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-slate-600">Carregando clientes...</p>
+          </div>
+        ) : filteredClients.length === 0 ? (
+          <div className="text-center py-8">
+            <Building2 className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-slate-900 mb-2">Nenhum cliente encontrado</h3>
+            <p className="text-slate-600 mb-4">
+              {searchTerm ? 'Tente ajustar sua busca.' : 'Você ainda não tem clientes cadastrados.'}
+            </p>
+            <p className="text-sm text-slate-500">
+              Os clientes aparecerão aqui automaticamente quando fizerem parcerias com seu negócio.
+            </p>
+          </div>
+        ) : (
           <div className="space-y-4">
-            {clients.map((client) => (
-              <div key={client.id} className="flex items-center justify-between p-4 border rounded-lg">
+            {filteredClients.map((client) => (
+              <div key={client.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 transition-colors">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center">
                     <Building2 className="h-6 w-6 text-slate-600" />
                   </div>
                   <div>
-                    <h3 className="font-medium">{client.name}</h3>
-                    <p className="text-sm text-slate-600">{client.type}</p>
+                    <h3 className="font-medium">{client.supplier?.company?.name || 'Fornecedor'}</h3>
+                    <p className="text-sm text-slate-600">{client.supplier?.category || 'Fornecedor'}</p>
                     <p className="text-xs text-slate-500">
-                      Cliente desde {formatDate(client.joinDate)} • {client.orders} pedidos
+                      Parceria desde {formatDate(client.createdAt)}
                     </p>
                   </div>
                 </div>
                 
                 <div className="flex items-center space-x-4">
-                  <div className="text-center">
-                    <div className="flex items-center space-x-1">
-                      <Star className="h-4 w-4 text-yellow-500 fill-current" />
-                      <span className="text-sm font-medium">{client.rating}</span>
-                    </div>
-                    <p className="text-xs text-slate-500">avaliação</p>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="font-semibold">{formatCurrency(client.totalValue)}</p>
-                    <p className="text-xs text-slate-500">total em compras</p>
-                  </div>
-                  
                   {getStatusBadge(client.status)}
                   
                   <DropdownMenu>
@@ -163,11 +176,11 @@ export default function SupplierClients() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleViewClient(client.id)}>
                         <Eye className="h-4 w-4 mr-2" />
                         Ver Perfil
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleMessageClient(client.id)}>
                         <MessageSquare className="h-4 w-4 mr-2" />
                         Enviar Mensagem
                       </DropdownMenuItem>
@@ -177,8 +190,8 @@ export default function SupplierClients() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
     </div>
   )
 }

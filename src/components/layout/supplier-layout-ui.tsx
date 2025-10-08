@@ -10,6 +10,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
 // Imports removidos temporariamente para evitar warnings de unused imports
 import {
   Menu,
@@ -26,9 +38,9 @@ import {
   User,
   Building2,
   HandshakeIcon,
-  Crown,
   HeadphonesIcon,
-  DollarSign
+  FolderTree,
+
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
@@ -36,6 +48,9 @@ import { useSession, signOut } from '@/lib/auth/auth-client'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { UserProfile } from '@/components/profile/unified-user-profile'
 import { useSupplierLayout } from '@/providers/supplier-layout-provider'
+import { SupplierBillingOverviewContent } from './billing/supplier-billing-overview-content'
+import { SupplierBillingPlansContent } from './billing/supplier-billing-plans-content'
+import { SupplierSupportContent } from './billing/supplier-support-content'
 
 interface SupplierLayoutUIProps {
   children: React.ReactNode
@@ -43,7 +58,10 @@ interface SupplierLayoutUIProps {
 
 export function SupplierLayoutUI({ children }: SupplierLayoutUIProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [billingDialogOpen, setBillingDialogOpen] = useState(false)
+
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+  const [billingTab, setBillingTab] = useState('overview')
   
   const router = useRouter()
   const pathname = usePathname()
@@ -66,12 +84,13 @@ export function SupplierLayoutUI({ children }: SupplierLayoutUIProps) {
   const sidebarItems = [
     { id: 'supplier-dashboard', label: 'Visão Geral', icon: Home, href: '/supplier-dashboard' },
     { id: 'supplier-products', label: 'Meus Produtos', icon: Package2, href: '/supplier-products' },
+    { id: 'supplier-categories', label: 'Categorias', icon: FolderTree, href: '/supplier-categories' },
     { id: 'supplier-orders', label: 'Pedidos Recebidos', icon: Truck, href: '/supplier-orders' },
     { id: 'partnership-requests', label: 'Solicitações de Parceria', icon: HandshakeIcon, href: '/partnership-requests' },
     { id: 'supplier-clients', label: 'Clientes', icon: Building2, href: '/supplier-clients' },
     { id: 'supplier-analytics', label: 'Relatórios', icon: BarChart, href: '/supplier-analytics' },
-    { id: 'supplier-billing', label: 'Faturamento', icon: DollarSign, href: '/supplier-billing' },
-    { id: 'supplier-subscription', label: 'Planos de Assinatura', icon: Crown, href: '/supplier-subscription' },
+
+
     { id: 'supplier-settings', label: 'Configurações', icon: Settings, href: '/supplier-settings' }
   ]
 
@@ -186,17 +205,16 @@ export function SupplierLayoutUI({ children }: SupplierLayoutUIProps) {
                     Meu Perfil
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/supplier-subscription-manage">
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Gerenciar Assinatura
-                    </Link>
+                  <DropdownMenuItem onClick={() => setBillingDialogOpen(true)}>
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Gerenciar Assinatura
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/supplier-support">
-                      <HeadphonesIcon className="h-4 w-4 mr-2" />
-                      Suporte
-                    </Link>
+                  <DropdownMenuItem onClick={() => {
+                    setBillingTab('support')
+                    setBillingDialogOpen(true)
+                  }}>
+                    <HeadphonesIcon className="h-4 w-4 mr-2" />
+                    Suporte
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
@@ -213,7 +231,43 @@ export function SupplierLayoutUI({ children }: SupplierLayoutUIProps) {
         </div>
       </div>
 
-      {/* Profile Dialog */}
+      {/* Dialogs */}
+      <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
+        <DialogContent className="min-w-6xl w-full max-h-[90vh] h-[90vh] overflow-y-auto scrollbar-hide">
+          <DialogHeader className="space-y-4">
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Gerenciar Assinatura
+            </DialogTitle>
+            <Tabs value={billingTab} onValueChange={setBillingTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+                <TabsTrigger value="plans">Planos</TabsTrigger>
+                <TabsTrigger value="support">Suporte</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="overview" className="space-y-6 mt-6 h-[70vh] overflow-y-auto scrollbar-hide">
+                <SupplierBillingOverviewContent onUpgrade={() => {
+                  setBillingTab('plans')
+                }} />
+              </TabsContent>
+
+              <TabsContent value="plans" className="space-y-6 mt-6 h-[70vh] overflow-y-auto scrollbar-hide">
+                <SupplierBillingPlansContent onPlanSelected={() => {
+                  setBillingTab('overview')
+                }} />
+              </TabsContent>
+
+              <TabsContent value="support" className="space-y-6 mt-6 h-[70vh] overflow-y-auto scrollbar-hide">
+                <SupplierSupportContent />
+              </TabsContent>
+            </Tabs>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+
+
       <UserProfile 
         open={profileDialogOpen} 
         onOpenChange={setProfileDialogOpen}

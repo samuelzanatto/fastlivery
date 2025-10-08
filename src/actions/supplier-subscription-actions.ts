@@ -63,6 +63,12 @@ export async function getCurrentSupplierSubscription(): Promise<SupplierSubscrip
     return null
   }
 
+  // SECURITY: Verificar se usuário tem role adequada para supplier
+  const allowedRoles = ['supplierOwner', 'supplierManager']
+  if (!session.user.role || !allowedRoles.includes(session.user.role)) {
+    return null
+  }
+
   // Find supplier for current user
   const company = await prisma.company.findFirst({
     where: { ownerId: session.user.id },
@@ -104,6 +110,12 @@ export async function createSupplierSubscription(planId: string) {
     
     if (!session?.user?.id) {
       throw new Error('Usuário não autenticado')
+    }
+
+    // SECURITY: Verificar se usuário tem role adequada para supplier  
+    const allowedRoles = ['supplierOwner', 'supplierManager']
+    if (!session.user.role || !allowedRoles.includes(session.user.role)) {
+      throw new Error('Role não autorizada para operações de fornecedor')
     }
 
     // Find supplier and company
@@ -335,6 +347,12 @@ export async function getSupplierUsageStats() {
     
     if (!session?.user?.id) {
       throw new Error('Usuário não autenticado')
+    }
+
+    // SECURITY: Verificar se usuário tem role adequada para supplier
+    const allowedRoles = ['supplierOwner', 'supplierManager']
+    if (!session.user.role || !allowedRoles.includes(session.user.role)) {
+      throw new Error('Role não autorizada para operações de fornecedor')
     }
 
     const company = await prisma.company.findFirst({

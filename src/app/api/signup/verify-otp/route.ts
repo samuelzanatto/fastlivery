@@ -40,6 +40,22 @@ export async function POST(request: NextRequest) {
           error: 'Email não encontrado. Solicite um novo código.' 
         }, { status: 404 })
       }
+
+      // SECURITY CHECK: Impedir verificação para qualquer usuário já ativo
+      if (user.isActive && user.role) {
+        console.log(`[DEBUG] SECURITY ERROR: Usuário ativo com role ${user.role} tentando verificação de signup - bloqueando`)
+        
+        let errorMessage = 'Esta conta já está ativa.'
+        if (user.role === 'customer') {
+          errorMessage = 'Esta conta de cliente já está ativa. Faça login na sua conta existente.'
+        } else if (user.role === 'businessOwner') {
+          errorMessage = 'Esta conta de empresa já está ativa. Faça login na sua conta existente.'
+        } else if (user.role === 'supplierOwner') {
+          errorMessage = 'Esta conta de fornecedor já está ativa. Faça login na sua conta existente.'
+        }
+        
+        return NextResponse.json({ error: errorMessage, code: 'ACCOUNT_ACTIVE' }, { status: 409 })
+      }
       
       const verificationResult = await auth.api.verifyEmailOTP({
         body: {

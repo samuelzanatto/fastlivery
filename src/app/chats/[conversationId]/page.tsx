@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useSession } from '@/lib/auth/auth-client'
-import { useChatRealtime } from '@/hooks/realtime/use-supabase-realtime'
+// Hook realtime de chat desabilitado temporariamente
+// import { useChatRealtime } from '@/hooks/realtime'
 import { getConversationDetails, sendMessage } from '@/actions/chats/chats'
 import { 
   MessageCircle,
@@ -20,7 +21,7 @@ import {
 interface ChatMessage {
   id: string
   content: string
-  senderType: 'CUSTOMER' | 'BUSINESS'
+  senderType: 'CUSTOMER' | 'BUSINESS' | 'SYSTEM'
   createdAt: string
   isRead: boolean
   senderId?: string
@@ -51,6 +52,8 @@ export default function ChatPage() {
   const conversationId = params.conversationId as string
 
   // Hook de chat realtime
+  // Hook realtime de chat desabilitado temporariamente
+  /*
   const { 
     chatConnected: _chatConnected
   } = useChatRealtime({
@@ -73,6 +76,7 @@ export default function ChatPage() {
       } : prev)
     }
   })
+  */
 
   // WebSocket connection removido - funcionalidade removida do projeto
 

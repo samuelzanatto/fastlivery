@@ -261,6 +261,22 @@ export function withBusiness<T extends unknown[], R>(
 }
 
 /**
+ * Decorator para Server Actions que precisam de empresa/fornecedor
+ */
+export function withCompany<T extends unknown[], R>(
+  action: (companyData: CompanyContext, ...args: T) => Promise<ActionResult<R>>
+) {
+  return async (...args: T): Promise<ActionResult<R>> => {
+    try {
+      const companyData = await getAuthenticatedUserCompany()
+      return await action(companyData, ...args)
+    } catch (error) {
+      return handleActionError(error) as ActionResult<R>
+    }
+  }
+}
+
+/**
  * Redirect helper para Server Actions
  */
 export function redirectTo(path: string): never {

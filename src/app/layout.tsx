@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import { SonnerToaster } from "@/components/providers/sonner-toaster";
 import { PageTransitionProvider } from "@/components/providers/page-transition-provider";
+import { SWRProvider } from "@/providers/swr-provider";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -55,7 +56,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className="md:scrollbar-auto scrollbar-hide">
+    <html lang="pt-BR" className="md:scrollbar-auto scrollbar-hide" data-scroll-behavior="smooth">
       <head>
         {/* Basic Meta Tags */}
         <meta name="application-name" content="FastLivery" />
@@ -100,9 +101,11 @@ export default function RootLayout({
       <body
         className={`${poppins.variable} font-sans antialiased md:scrollbar-auto scrollbar-hide`}
       >
-        <PageTransitionProvider>
-          {children}
-        </PageTransitionProvider>
+        <SWRProvider>
+          <PageTransitionProvider>
+            {children}
+          </PageTransitionProvider>
+        </SWRProvider>
   {/* Provider sonner para toasts */}
         <SonnerToaster />
       </body>

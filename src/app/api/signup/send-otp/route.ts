@@ -51,6 +51,22 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // SECURITY CHECK: Impedir novo cadastro para qualquer usuário ativo
+    if (existingUser && existingUser.isActive && existingUser.role) {
+      console.log(`[DEBUG] SECURITY ERROR: Usuário ativo com role ${existingUser.role} tentando novo cadastro - bloqueando para email: ${email}`)
+      
+      let errorMessage = 'Este email já está em uso.'
+      if (existingUser.role === 'customer') {
+        errorMessage = 'Este email já está associado a uma conta de cliente. Faça login na sua conta existente.'
+      } else if (existingUser.role === 'businessOwner') {
+        errorMessage = 'Este email já está associado a uma conta de empresa. Faça login na sua conta existente.'
+      } else if (existingUser.role === 'supplierOwner') {
+        errorMessage = 'Este email já está associado a uma conta de fornecedor. Faça login na sua conta existente.'
+      }
+      
+      return NextResponse.json({ error: errorMessage }, { status: 409 })
+    }
+
     // Enviar OTP usando better-auth (com throttle idempotente)
     try {
       console.log(`[DEBUG] Iniciando processo de envio OTP para signup: ${email.toLowerCase()}`)

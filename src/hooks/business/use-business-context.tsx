@@ -24,6 +24,7 @@ export function useBusinessContext() {
   const business = useBusinessStore((state) => state.business);
   const membershipRole = useBusinessStore((state) => state.membershipRole);
   const loading = useBusinessStore((state) => state.loading);
+  const initialized = useBusinessStore((state) => state.initialized);
   const error = useBusinessStore((state) => state.error);
   const { fetchBusiness, updateBusinessInStore, refreshBusiness } = useBusinessStore();
 
@@ -86,6 +87,7 @@ export function useBusinessContext() {
     
     // Estados de loading
     loading,
+    initialized,
     isPending,
     error,
     

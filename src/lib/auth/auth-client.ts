@@ -65,8 +65,10 @@ const absoluteBase = getAppUrl()
 const baseURL = isBrowser ? '' : absoluteBase
 
 if (isBrowser && absoluteBase && window.location.origin !== absoluteBase) {
-  // Aviso útil durante desenvolvimento para evitar confusão de sessão
-  console.warn('[auth-client] Origin mismatch: window.origin=', window.location.origin, ' configured=', absoluteBase, ' -> usando relative baseURL')
+  // Debug apenas em desenvolvimento para evitar confusão de sessão
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[auth-client] Origin mismatch: window.origin=', window.location.origin, ' configured=', absoluteBase, ' -> usando relative baseURL')
+  }
 }
 
 export const authClient = createAuthClient({

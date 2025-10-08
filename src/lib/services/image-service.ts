@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '@/lib/supabase'
 import sharp from 'sharp'
 import crypto from 'crypto'
 import { ImageUploadOptions, ImageRecord, ImageType, ImageMetadata } from './image-types'
@@ -57,13 +57,10 @@ const IMAGE_CONFIGS = {
 
 export class ImageService {
   private static instance: ImageService
-  private supabase: ReturnType<typeof createClient>
+  private supabase = supabaseAdmin
 
   private constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role para bypass RLS quando necessário
-    )
+    // Usando instância centralizada do supabaseAdmin
   }
 
   public static getInstance(): ImageService {

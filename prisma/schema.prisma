@@ -44,6 +44,7 @@ model User {
   supplierReviews      SupplierReview[]      
   marketplaceFavorites MarketplaceFavorite[] 
   marketplaceActivities MarketplaceActivity[]
+  passwordResetTokens  PasswordResetToken[]
 
   @@map("users")
 }
@@ -82,6 +83,23 @@ model Account {
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("accounts")
+}
+
+// Tokens de redefinição de senha
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 model Address {
@@ -129,6 +147,8 @@ model Business {
   mercadoPagoAccessToken String?
   mercadoPagoConfigured  Boolean                @default(false)
   mercadoPagoPublicKey   String?
+  mercadoPagoRefreshToken String?
+  mercadoPagoExpiresAt    DateTime?
   categories             Category[]
   conversations          Conversation[]         @relation("BusinessConversations")
   employeeProfiles       EmployeeProfile[]
@@ -836,6 +856,11 @@ model Company {
   supplierReviews        SupplierReview[]       @relation("CompanySupplierReviews")
   marketplaceFavorites   MarketplaceFavorite[]  @relation("CompanyFavorites")
   marketplaceActivities  MarketplaceActivity[]  @relation("CompanyActivities")
+  whatsappConfig         WhatsappConfig?
+  whatsappMessages       WhatsappMessage[]
+  whatsappCartItems      WhatsappCartItem[]
+  whatsappOrders         WhatsappOrder[]
+  supplierServiceCategories SupplierServiceCategory[]
 
   @@map("companies")
 }
@@ -883,6 +908,8 @@ model Supplier {
   
   // Subscription relationship
   subscription         SupplierSubscription?
+  clients              SupplierClient[]
+  whatsappOrderSuppliers WhatsappOrderSupplier[]
 
   @@map("suppliers")
 }
@@ -903,13 +930,76 @@ model SupplierService {
   images       Json     @default("[]")
   specifications Json   @default("{}")
   isActive     Boolean  @default(true)
+  // ================= ESTOQUE =================
+  trackStock        Boolean  @default(true)    // Se false ignora reservas/controle
+  stockQuantity     Int       @default(0)       // Quantidade física disponível
+  reservedQuantity  Int       @default(0)       // Quantidade reservada (carrinhos / pedidos pendentes)
+  lowStockThreshold Int       @default(0)       // Limite para alerta de baixo estoque
+  allowBackorder    Boolean   @default(false)   // Permitir vender mesmo sem estoque disponível
+  // Calculado em runtime: available = stockQuantity - reservedQuantity
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // Relacionamentos
   supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  categoryRef  SupplierServiceCategory? @relation(fields: [categoryId], references: [id])
+  categoryId   String?
+  whatsappCartItems WhatsappCartItem[]
+  stockMovements    SupplierServiceStockMovement[]
 
   @@map("supplier_services")
+}
+
+// SupplierServiceCategory model - Categorias de produtos/serviços dos fornecedores
+model SupplierServiceCategory {
+  id           String   @id @default(cuid())
+  companyId    String
+  name         String
+  description  String?
+  parentId     String?
+  order        Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relacionamentos
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent       SupplierServiceCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  subcategories SupplierServiceCategory[] @relation("CategoryHierarchy")
+  services     SupplierService[]
+
+  @@index([companyId, order])
+  @@map("supplier_service_categories")
+}
+
+// Movimentações de estoque de SupplierService
+model SupplierServiceStockMovement {
+  id            String   @id @default(cuid())
+  serviceId     String
+  type          StockMovementType
+  quantity      Int        // Quantidade movimentada (positiva para entrada/reserva, negativa para consumo/liberação)
+  stockBefore   Int        // Quantidade física antes (stockQuantity)
+  stockAfter    Int        // Quantidade física depois
+  reservedBefore Int       // Quantidade reservada antes
+  reservedAfter  Int       // Quantidade reservada depois
+  reason        String?    // Texto livre / contexto
+  reference     String?    // ex: phone do cliente, orderId, ajuste manual
+  metadata      Json       @default("{}")
+  createdAt     DateTime   @default(now())
+
+  service       SupplierService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, createdAt])
+  @@map("supplier_service_stock_movements")
+}
+
+enum StockMovementType {
+  ADJUSTMENT     // Ajuste manual (entrada ou saída)
+  RESERVATION    // Reserva (adicionar ao carrinho)
+  RELEASE        // Liberação (remover do carrinho)
+  CONSUMPTION    // Consumo efetivo (finalização de pedido)
+  CANCELLATION   // Cancelamento de pedido (retorna ao estoque)
+  CORRECTION     // Correção sistêmica
 }
 
 // Partnership model - Relacionamento empresa-fornecedor
@@ -992,6 +1082,31 @@ model SupplierReview {
 
   @@unique([supplierId, companyId])
   @@map("supplier_reviews")
+}
+
+// =============================================================
+// SupplierClient - Clientes diretos do fornecedor (B2C interno)
+// Usado para a funcionalidade de "Clientes" dentro do dashboard do fornecedor
+// Não confundir com Partnership que é B2B entre empresas
+// =============================================================
+model SupplierClient {
+  id              String    @id @default(cuid())
+  supplierId      String
+  supplier        Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name            String
+  phone           String
+  email           String?
+  company         String?
+  whatsappEnabled Boolean   @default(true)
+  notes           Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Telefone passa a ser tratado como identificador global único
+  // (Se for necessário permitir o mesmo número em múltiplos suppliers, remover a linha abaixo)
+  @@unique([phone])
+  @@unique([supplierId, phone])
+  @@map("supplier_clients")
 }
 
 // MarketplaceFavorite model - Favoritos das empresas
@@ -1173,4 +1288,125 @@ model SupplierSubscription {
   plan                  SupplierSubscriptionPlan    @relation(fields: [planId], references: [id])
 
   @@map("supplier_subscriptions")
+}
+
+// WhatsApp Configuration for Companies/Suppliers
+model WhatsappConfig {
+  id              String               @id @default(cuid())
+  companyId       String               @unique
+  instanceName    String               @unique
+  instanceId      String
+  status          WhatsappStatus       @default(DISCONNECTED)
+  enabled         Boolean              @default(false)
+  webhookUrl      String?
+  qrCode          String?
+  lastConnected   DateTime?
+  
+  // Bot configuration
+  botEnabled      Boolean              @default(false)
+  botPrompt       String?
+  
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  
+  // Relacionamentos
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_configs")
+}
+
+enum WhatsappStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+// ======================================
+// WhatsApp Bot Messages (Histórico IA)
+// ======================================
+model WhatsappMessage {
+  id               String           @id @default(cuid())
+  companyId        String
+  phone            String           // Número do cliente (E.164 ou local sem +, padronizar na aplicação)
+  direction        MessageDirection // IN (recebida) | OUT (enviada)
+  role             String           // user | assistant | system (compatível com formatos de chat)
+  content          String
+  intent           String?          // Intent classificada (ex: BUSCAR_PRODUTO)
+  intentConfidence Float?           // 0..1
+  meta             Json?            // Campos adicionais (ex: entidades extraídas)
+  createdAt        DateTime         @default(now())
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, phone, createdAt])
+  @@map("whatsapp_messages")
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+// Pedidos finalizados via fluxo WhatsApp (supplier)
+model WhatsappOrder {
+  id             String               @id @default(cuid())
+  companyId      String
+  phone          String
+  items          Json                 // [{serviceId, name, quantity, unitPrice}]
+  totalItems     Int
+  totalDistinct  Int
+  totalEstimated Float                @default(0)
+  status         WhatsappOrderStatus  @default(PENDING)
+  createdAt      DateTime             @default(now())
+  // For realtime supplier filtering (distinct supplier IDs involved in this order)
+  supplierIdsDistinct String[]        @default([])
+  source         WhatsappOrderSource  @default(WHATSAPP)
+  company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  suppliers      WhatsappOrderSupplier[]
+
+  @@index([companyId, phone, createdAt])
+  @@map("whatsapp_orders")
+}
+
+// Pivot para permitir filtro eficiente por supplierId em realtime
+model WhatsappOrderSupplier {
+  orderId    String
+  supplierId String
+  createdAt  DateTime @default(now())
+  order      WhatsappOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  supplier   Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@id([orderId, supplierId])
+  @@index([supplierId])
+  @@map("whatsapp_order_suppliers")
+}
+
+enum WhatsappOrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum WhatsappOrderSource {
+  WHATSAPP
+  PLATFORM
+}
+
+// ======================================
+// WhatsApp Bot Cart Items (Carrinho IA)
+// ======================================
+model WhatsappCartItem {
+  id         String          @id @default(cuid())
+  companyId  String
+  phone      String
+  serviceId  String
+  quantity   Int             @default(1)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  service    SupplierService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, phone, serviceId])
+  @@index([companyId, phone])
+  @@map("whatsapp_cart_items")
 }

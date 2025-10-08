@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react"
 import { useSession } from "@/lib/auth/auth-client"
 
 import { notify } from '@/lib/notifications/notify'
-import { useSupabaseRealtime } from '@/hooks/realtime/use-supabase-realtime'
+import { useOrdersRealtime } from '@/lib/realtime/hooks/use-orders-legacy'
 // Uso centralizado do businessId via store (remove fetch local redundante)
 import { useBusinessId } from '@/stores/business-store'
 import { 
@@ -707,10 +707,7 @@ export default function OrdersPage() {
   // Hook do Realtime com callbacks otimizados
   const { 
     ordersConnected: _isRealtimeConnected
-  } = useSupabaseRealtime({
-      orders: {
-      enabled: !!businessId,
-      businessId: businessId || undefined,
+  } = useOrdersRealtime(businessId || '', {
       onOrderCreate: (newOrder) => {
         // novo pedido recebido via realtime (incremental)
         // Toast (fallback caso helper não exista)
@@ -866,42 +863,7 @@ export default function OrdersPage() {
           pending: prev.pending - (orders.find(o => o.id === deletedOrderId)?.status === 'pending' ? 1 : 0)
         }))
       }
-    },
-    payments: {
-      enabled: !!businessId,
-      businessId: businessId || undefined,
-      onPaymentUpdate: (payment) => {
-        console.log('[realtime][payment] update recebido', payment)
-        if (!payment?.orderId) return
-        setOrders(prev => prev.map(o => {
-          if (o.id !== payment.orderId) return o
-          const newStatus = mapDbPaymentStatus(payment.status)
-          if (o.paymentStatus === newStatus) return o
-          return { ...o, paymentStatus: newStatus }
-        }))
-
-        // Destacar visualmente a linha do pedido cujo pagamento mudou
-        setHighlighted(prev => {
-          const clone = new Set(prev)
-          clone.add(payment.orderId!)
-          return clone
-        })
-        if (highlightTimeoutsRef.current[payment.orderId!]) {
-          clearTimeout(highlightTimeoutsRef.current[payment.orderId!])
-        }
-        highlightTimeoutsRef.current[payment.orderId!] = setTimeout(() => {
-          setHighlighted(prev => {
-            const clone = new Set(prev)
-            clone.delete(payment.orderId!)
-            return clone
-          })
-          delete highlightTimeoutsRef.current[payment.orderId!]
-        }, 4000)
-
-        // Removido: notificações centralizadas no canal de orders para evitar duplicidade
-      }
-    }
-  })
+    })
 
   useEffect(() => {
     if (!businessId) return
