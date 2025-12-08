@@ -24,6 +24,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: business.name,
     description: business.description || `${business.name} - Delivery e Takeout`,
     manifest: `/${resolvedParams.slug}/manifest.json`,
+    icons: {
+      icon: [
+        { url: `/${resolvedParams.slug}/icon?size=32`, sizes: '32x32', type: 'image/png' },
+        { url: `/${resolvedParams.slug}/icon?size=192`, sizes: '192x192', type: 'image/png' },
+      ],
+      apple: [
+        { url: `/${resolvedParams.slug}/icon?size=180`, sizes: '180x180', type: 'image/png' },
+      ],
+    },
     appleWebApp: {
       capable: true,
       statusBarStyle: 'default',

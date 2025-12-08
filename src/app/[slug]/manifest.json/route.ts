@@ -31,11 +31,14 @@ export async function GET(
     const themeColor = '#f97316' // orange-500
     const backgroundColor = '#ffffff'
 
+    // Base URL para os ícones dinâmicos
+    const iconBaseUrl = `/${slug}/icon`
+
     // Construir manifest
     const manifest = {
       name: business.name,
       short_name: business.name.length > 12 
-        ? business.name.substring(0, 12) + '...' 
+        ? business.name.substring(0, 12) 
         : business.name,
       description: business.description || `Faça seu pedido no ${business.name}`,
       
@@ -50,39 +53,67 @@ export async function GET(
       theme_color: themeColor,
       background_color: backgroundColor,
       
-      // Ícones - usar avatar do restaurante ou fallback
-      icons: business.avatar ? [
+      // Ícones - usar API dinâmica que redimensiona o avatar
+      icons: [
         {
-          src: business.avatar,
+          src: `${iconBaseUrl}?size=72`,
+          sizes: '72x72',
+          type: 'image/png',
+          purpose: 'any'
+        },
+        {
+          src: `${iconBaseUrl}?size=96`,
+          sizes: '96x96',
+          type: 'image/png',
+          purpose: 'any'
+        },
+        {
+          src: `${iconBaseUrl}?size=128`,
+          sizes: '128x128',
+          type: 'image/png',
+          purpose: 'any'
+        },
+        {
+          src: `${iconBaseUrl}?size=144`,
+          sizes: '144x144',
+          type: 'image/png',
+          purpose: 'any'
+        },
+        {
+          src: `${iconBaseUrl}?size=152`,
+          sizes: '152x152',
+          type: 'image/png',
+          purpose: 'any'
+        },
+        {
+          src: `${iconBaseUrl}?size=192`,
           sizes: '192x192',
           type: 'image/png',
           purpose: 'any'
         },
         {
-          src: business.avatar,
+          src: `${iconBaseUrl}?size=384`,
+          sizes: '384x384',
+          type: 'image/png',
+          purpose: 'any'
+        },
+        {
+          src: `${iconBaseUrl}?size=512`,
           sizes: '512x512',
           type: 'image/png',
           purpose: 'any'
         },
         {
-          src: business.avatar,
+          src: `${iconBaseUrl}?size=192`,
           sizes: '192x192',
           type: 'image/png',
           purpose: 'maskable'
-        }
-      ] : [
-        // Ícones fallback
-        {
-          src: '/icons/icon-192x192.png',
-          sizes: '192x192',
-          type: 'image/png',
-          purpose: 'any maskable'
         },
         {
-          src: '/icons/icon-512x512.png',
+          src: `${iconBaseUrl}?size=512`,
           sizes: '512x512',
           type: 'image/png',
-          purpose: 'any'
+          purpose: 'maskable'
         }
       ],
       
