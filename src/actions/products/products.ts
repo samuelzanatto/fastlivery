@@ -15,7 +15,6 @@ import {
   validateData,
   validateId 
 } from '@/lib/actions/validation-helpers'
-import { withLimitCheck } from '@/lib/actions/billing-helpers'
 
 export interface Product {
   id: string
@@ -189,11 +188,12 @@ export const getProduct = withBusiness(_getProduct)
  * Criar novo produto
  */
 async function _createProduct(
-  businessId: string,
+  { business }: BusinessContext,
   input: ProductCreateInput
 ): Promise<ActionResult<Product>> {
   try {
     const validatedData = validateData(ProductSchema, input)
+    const businessId = business.id
 
     // Verificar se a categoria existe e pertence ao negócio
     const category = await prisma.category.findFirst({
@@ -235,7 +235,7 @@ async function _createProduct(
   }
 }
 
-export const createProduct = withLimitCheck('product', _createProduct)
+export const createProduct = withBusiness(_createProduct)
 
 /**
  * Atualizar produto

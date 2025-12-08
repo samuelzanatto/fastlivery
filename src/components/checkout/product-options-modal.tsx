@@ -1,16 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Minus, Plus } from 'lucide-react'
-import Image from 'next/image'
+import { Textarea } from '@/components/ui/textarea'
+import { X, Plus, Minus } from 'lucide-react'
 
 interface ProductOptionItem {
   id: string
@@ -38,15 +35,11 @@ interface Product {
   options?: ProductOption[]
 }
 
-interface SelectedOptions {
-  [optionGroupId: string]: string[] // IDs dos itens selecionados
-}
-
 interface ProductOptionsModalProps {
   product: Product | null
   isOpen: boolean
   onClose: () => void
-  onAddToCart: (product: Product, selectedOptions: SelectedOptions, quantity: number, totalPrice: number) => void
+  onAddToCart: (product: Product, selectedOptions: Record<string, string[]>, quantity: number, totalPrice: number) => void
 }
 
 export function ProductOptionsModal({
@@ -55,322 +48,229 @@ export function ProductOptionsModal({
   onClose,
   onAddToCart
 }: ProductOptionsModalProps) {
-  const [selectedOptions, setSelectedOptions] = useState<SelectedOptions>({})
   const [quantity, setQuantity] = useState(1)
-  const [isLoading, setIsLoading] = useState(false)
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({})
+  const [notes, setNotes] = useState('')
 
-  // Reset state when product changes
+  // Reset state quando o modal abre com um novo produto
   useEffect(() => {
-    if (product) {
-      setSelectedOptions({})
+    if (isOpen && product) {
       setQuantity(1)
+      setSelectedOptions({})
+      setNotes('')
     }
-  }, [product])
+  }, [isOpen, product?.id])
 
-  // Calculate total price including selected options
+  if (!isOpen || !product) return null
+
+  const options = product.options || []
+
+  // Calcular preço total com opções selecionadas
   const calculateTotalPrice = () => {
-    if (!product) return 0
+    let total = product.price * quantity
     
-    const basePrice = product.price
-    let optionsPrice = 0
-
-    // Calculate price from selected options
-    if (product.options) {
-      product.options.forEach(optionGroup => {
-        const selectedItems = selectedOptions[optionGroup.id] || []
-        selectedItems.forEach(itemId => {
-          const item = optionGroup.options.find(opt => opt.id === itemId)
-          if (item) {
-            optionsPrice += item.price
-          }
-        })
-      })
+    for (const option of options) {
+      const selected = selectedOptions[option.id] || []
+      for (const selectedId of selected) {
+        const item = option.options.find(o => o.id === selectedId)
+        if (item) {
+          total += item.price * quantity
+        }
+      }
     }
-
-    return (basePrice + optionsPrice) * quantity
+    
+    return total
   }
 
-  // Handle option selection
-  const handleOptionChange = (optionGroupId: string, itemId: string, isChecked: boolean) => {
-    const optionGroup = product?.options?.find(opt => opt.id === optionGroupId)
-    if (!optionGroup) return
-
-    setSelectedOptions(prev => {
-      const currentSelections = prev[optionGroupId] || []
-      
-      if (optionGroup.maxOptions === 1) {
-        // Radio behavior - only one selection allowed
-        return {
-          ...prev,
-          [optionGroupId]: isChecked ? [itemId] : []
+  // Verificar se todas as opções obrigatórias foram selecionadas
+  const canAddToCart = () => {
+    for (const option of options) {
+      if (option.isRequired) {
+        const selected = selectedOptions[option.id] || []
+        if (selected.length === 0) {
+          return false
         }
-      } else {
-        // Checkbox behavior - multiple selections allowed
-        if (isChecked) {
-          // Add selection if under max limit
-          if (currentSelections.length < optionGroup.maxOptions) {
-            return {
-              ...prev,
-              [optionGroupId]: [...currentSelections, itemId]
-            }
-          }
-          return prev // Don't add if at max limit
-        } else {
-          // Remove selection
+      }
+    }
+    return true
+  }
+
+  const handleOptionChange = (optionId: string, itemId: string, isMultiple: boolean) => {
+    setSelectedOptions(prev => {
+      const current = prev[optionId] || []
+      
+      if (isMultiple) {
+        // Checkbox - permite múltiplas seleções
+        if (current.includes(itemId)) {
           return {
             ...prev,
-            [optionGroupId]: currentSelections.filter(id => id !== itemId)
+            [optionId]: current.filter(id => id !== itemId)
           }
+        } else {
+          const option = options.find(o => o.id === optionId)
+          if (option && current.length >= option.maxOptions) {
+            return prev
+          }
+          return {
+            ...prev,
+            [optionId]: [...current, itemId]
+          }
+        }
+      } else {
+        // Radio - apenas uma seleção
+        return {
+          ...prev,
+          [optionId]: [itemId]
         }
       }
     })
   }
 
-  // Validate required options
-  const validateOptions = (): boolean => {
-    if (!product?.options) return true
-    
-    return product.options.every(optionGroup => {
-      if (!optionGroup.isRequired) return true
-      const selected = selectedOptions[optionGroup.id] || []
-      return selected.length > 0
-    })
-  }
-
-  // Handle add to cart
   const handleAddToCart = () => {
-    if (!product || !validateOptions()) return
-    
-    setIsLoading(true)
+    if (!canAddToCart()) return
     const totalPrice = calculateTotalPrice()
-    
-    setTimeout(() => {
-      onAddToCart(product, selectedOptions, quantity, totalPrice)
-      setIsLoading(false)
-      onClose()
-    }, 500)
+    onAddToCart(product, selectedOptions, quantity, totalPrice)
+    onClose()
   }
-
-  // Handle quantity change
-  const updateQuantity = (newQuantity: number) => {
-    if (newQuantity >= 1) {
-      setQuantity(newQuantity)
-    }
-  }
-
-  if (!product) return null
-
-  const isValid = validateOptions()
-  const totalPrice = calculateTotalPrice()
-  const hasOptions = product.options && product.options.length > 0
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] p-0">
-        <div className="flex flex-col max-h-[90vh] px-4">
-          {/* Header */}
-          <DialogHeader className="py-6 pb-4">
-            <div className="flex items-start gap-4">
-              {/* Product Image */}
-              <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                {product.image ? (
-                  <Image 
-                    src={product.image} 
-                    alt={product.name}
-                    width={80}
-                    height={80}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">
-                    <span className="text-xs">Sem imagem</span>
-                  </div>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>{product.name}</CardTitle>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </CardHeader>
+        
+        <CardContent className="space-y-6">
+          {product.description && (
+            <p className="text-slate-600">{product.description}</p>
+          )}
+
+          <div className="text-xl font-bold">
+            R$ {product.price.toFixed(2)}
+          </div>
+
+          {/* Opções do produto */}
+          {options.map((option) => {
+            const isMultiple = option.maxOptions > 1
+            const selected = selectedOptions[option.id] || []
+
+            return (
+              <div key={option.id} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="font-semibold">
+                    {option.name}
+                    {option.isRequired && <span className="text-red-500 ml-1">*</span>}
+                  </Label>
+                  {isMultiple && (
+                    <span className="text-sm text-slate-500">
+                      Máx: {option.maxOptions}
+                    </span>
+                  )}
+                </div>
+
+                {option.description && (
+                  <p className="text-sm text-slate-500">{option.description}</p>
                 )}
-              </div>
 
-              {/* Product Info */}
-              <div className="flex-1">
-                <DialogTitle className="text-xl font-bold text-gray-900 mb-1">
-                  {product.name}
-                </DialogTitle>
-                {product.description && (
-                  <p className="text-sm text-gray-600 mb-2">{product.description}</p>
-                )}
-                <p className="text-lg font-bold text-orange-600">
-                  R$ {product.price.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          </DialogHeader>
-
-          {/* Scrollable Content */}
-          <ScrollArea className="flex-1">
-            <div className="space-y-6 pb-6 px-4">
-              {/* Options Groups */}
-              {hasOptions && product.options?.map((optionGroup, index) => (
-                <div key={optionGroup.id}>
-                  {index > 0 && <Separator className="mb-6" />}
-                  
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="font-semibold text-gray-900">{optionGroup.name}</h3>
-                      {optionGroup.isRequired && (
-                        <Badge variant="destructive" className="text-xs">
-                          Obrigatório
-                        </Badge>
-                      )}
-                      {optionGroup.maxOptions > 1 && (
-                        <Badge variant="secondary" className="text-xs">
-                          Até {optionGroup.maxOptions}
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {optionGroup.description && (
-                      <p className="text-sm text-gray-600 mb-3">{optionGroup.description}</p>
-                    )}
-
-                    <div className="space-y-3">
-                      {optionGroup.maxOptions === 1 ? (
-                        // Radio Group for single selection
-                        <RadioGroup
-                          value={selectedOptions[optionGroup.id]?.[0] || ""}
-                          onValueChange={(value) => 
-                            handleOptionChange(optionGroup.id, value, true)
-                          }
-                        >
-                          {optionGroup.options.map(item => (
-                            <div key={item.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50">
-                              <RadioGroupItem value={item.id} id={item.id} />
-                              <Label 
-                                htmlFor={item.id} 
-                                className="flex-1 cursor-pointer flex justify-between items-center"
-                              >
-                                <span>{item.name}</span>
-                                {item.price > 0 && (
-                                  <span className="text-orange-600 font-medium">
-                                    +R$ {item.price.toFixed(2)}
-                                  </span>
-                                )}
-                              </Label>
-                            </div>
-                          ))}
-                        </RadioGroup>
-                      ) : (
-                        // Checkboxes for multiple selection
-                        <div className="space-y-3">
-                          {optionGroup.options.map(item => {
-                            const isSelected = selectedOptions[optionGroup.id]?.includes(item.id) || false
-                            const currentCount = selectedOptions[optionGroup.id]?.length || 0
-                            const isDisabled = !isSelected && currentCount >= optionGroup.maxOptions
-                            
-                            return (
-                              <div 
-                                key={item.id} 
-                                className={`flex items-center space-x-3 p-2 rounded-lg ${
-                                  isDisabled ? 'opacity-50' : 'hover:bg-gray-50'
-                                }`}
-                              >
-                                <Checkbox
-                                  id={item.id}
-                                  checked={isSelected}
-                                  disabled={isDisabled}
-                                  onCheckedChange={(checked) => 
-                                    handleOptionChange(optionGroup.id, item.id, checked as boolean)
-                                  }
-                                />
-                                <Label 
-                                  htmlFor={item.id} 
-                                  className={`flex-1 cursor-pointer flex justify-between items-center ${
-                                    isDisabled ? 'cursor-not-allowed' : ''
-                                  }`}
-                                >
-                                  <span>{item.name}</span>
-                                  {item.price > 0 && (
-                                    <span className="text-orange-600 font-medium">
-                                      +R$ {item.price.toFixed(2)}
-                                    </span>
-                                  )}
-                                </Label>
-                              </div>
-                            )
-                          })}
+                {isMultiple ? (
+                  // Checkbox para múltiplas opções
+                  <div className="space-y-2">
+                    {option.options.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-2 rounded-lg border">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={item.id}
+                            checked={selected.includes(item.id)}
+                            onCheckedChange={() => handleOptionChange(option.id, item.id, true)}
+                            disabled={!selected.includes(item.id) && selected.length >= option.maxOptions}
+                          />
+                          <Label htmlFor={item.id} className="cursor-pointer">
+                            {item.name}
+                          </Label>
                         </div>
-                      )}
-                    </div>
+                        {item.price > 0 && (
+                          <span className="text-sm text-slate-600">
+                            +R$ {item.price.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
+                ) : (
+                  // Radio para seleção única
+                  <RadioGroup
+                    value={selected[0] || ''}
+                    onValueChange={(value) => handleOptionChange(option.id, value, false)}
+                  >
+                    {option.options.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-2 rounded-lg border">
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value={item.id} id={item.id} />
+                          <Label htmlFor={item.id} className="cursor-pointer">
+                            {item.name}
+                          </Label>
+                        </div>
+                        {item.price > 0 && (
+                          <span className="text-sm text-slate-600">
+                            +R$ {item.price.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </RadioGroup>
+                )}
+              </div>
+            )
+          })}
 
-              {/* No Options Message */}
-              {!hasOptions && (
-                <div className="p-4 text-center text-gray-600 bg-gray-50 rounded-lg">
-                  Este produto não possui opções adicionais.
-                </div>
-              )}
-            </div>
-          </ScrollArea>
+          {/* Observações */}
+          <div className="space-y-2">
+            <Label>Observações (opcional)</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Ex: sem cebola, bem passado..."
+              rows={2}
+            />
+          </div>
 
-          {/* Footer */}
-          <div className="border-t border-gray-200 py-6 bg-white px-4">
-            {/* Quantity Selector */}
-            <div className="flex items-center justify-center gap-4 mb-4">
+          {/* Quantidade */}
+          <div className="flex items-center justify-between">
+            <Label>Quantidade</Label>
+            <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                size="sm"
-                onClick={() => updateQuantity(quantity - 1)}
+                size="icon"
+                onClick={() => setQuantity(q => Math.max(1, q - 1))}
                 disabled={quantity <= 1}
-                className="h-10 w-10 p-0"
               >
                 <Minus className="h-4 w-4" />
               </Button>
-              <span className="text-lg font-medium w-12 text-center">{quantity}</span>
+              <span className="w-8 text-center font-medium">{quantity}</span>
               <Button
                 variant="outline"
-                size="sm"
-                onClick={() => updateQuantity(quantity + 1)}
-                className="h-10 w-10 p-0"
+                size="icon"
+                onClick={() => setQuantity(q => q + 1)}
               >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
-
-            <Separator className="my-4" />
-
-            {/* Total and Add Button */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="text-left">
-                <p className="text-sm text-gray-600">Total</p>
-                <p className="text-xl font-bold text-orange-600">
-                  R$ {totalPrice.toFixed(2)}
-                </p>
-              </div>
-              
-              <Button
-                onClick={handleAddToCart}
-                disabled={!isValid || isLoading}
-                className="bg-orange-500 hover:bg-orange-600 text-white px-8"
-                size="lg"
-              >
-                {isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    Adicionando...
-                  </div>
-                ) : (
-                  'Adicionar ao Carrinho'
-                )}
-              </Button>
-            </div>
-
-            {!isValid && (
-              <p className="text-sm text-red-600 text-center mt-2">
-                Selecione as opções obrigatórias para continuar
-              </p>
-            )}
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+
+          {/* Botão adicionar */}
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={handleAddToCart}
+            disabled={!canAddToCart()}
+          >
+            Adicionar • R$ {calculateTotalPrice().toFixed(2)}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

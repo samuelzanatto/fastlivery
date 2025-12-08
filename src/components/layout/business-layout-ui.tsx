@@ -17,12 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
-import {
   Menu,
   X,
   Home,
@@ -35,13 +29,11 @@ import {
   QrCode,
   HeadphonesIcon,
   BarChart,
-  CreditCard,
   MoreVertical,
   Shield,
   Grid3x3,
   Plus,
-  User,
-  Building2
+  User
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
@@ -50,9 +42,6 @@ import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { UserProfile } from '@/components/profile/unified-user-profile'
 import { useBusinessLayout } from '@/providers/business-layout-provider'
-import { BillingOverviewContent } from './billing/billing-overview-content'
-import { BillingPlansContent } from './billing/billing-plans-content'
-import { SupportContent } from './billing/support-content'
 
 interface BusinessLayoutUIProps {
   children: React.ReactNode
@@ -60,7 +49,6 @@ interface BusinessLayoutUIProps {
 
 export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [supportDialogOpen, setSupportDialogOpen] = useState(false)
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
   
@@ -75,44 +63,31 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
     isLoading
   } = useBusinessLayout()
 
-  // Track initial load: queremos mostrar skeletons apenas no primeiro carregamento
-  // Considera tanto o carregamento do layout (isLoading) quanto o carregamento
-  // do contexto de negócio (businessLoading). Só desligamos o initialLoad quando
-  // ambos estiverem prontos.
-  const [initialLoad, setInitialLoad] = useState(true)
+  // initialLoad só deve ser true na primeira montagem, não a cada navegação
+  const [initialLoad, setInitialLoad] = useState(() => !businessInitialized)
+  
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | null = null
-    // Só desliga o initialLoad quando ambos os carregamentos terminarem e
-    // o store estiver inicializado (para evitar flashes quando membershipRole
-    // chega logo depois do primeiro fetch)
-    if (!isLoading && !businessLoading && businessInitialized) {
-      t = setTimeout(() => setInitialLoad(false), 120)
+    // Só atualizar initialLoad se ainda estiver carregando
+    if (initialLoad && !isLoading && !businessLoading && businessInitialized) {
+      // Pequeno delay para transição suave
+      const t = setTimeout(() => setInitialLoad(false), 50)
+      return () => clearTimeout(t)
     }
-    return () => {
-      if (t) clearTimeout(t)
-    }
-  }, [isLoading, businessLoading, businessInitialized])
+  }, [initialLoad, isLoading, businessLoading, businessInitialized])
 
-  // Early return se não houver sessão ou a sessão ainda estiver pendente
-  if (!session || sessionPending) return null
+  // Não retornar null - sempre renderizar o layout
+  // O AuthGuard no layout.tsx já garante que temos sessão válida
 
-  // Função para verificar permissões baseada no novo sistema
   const hasPermission = (resource: string, action: string) => {
-    if (isOwner) return true // Owner tem acesso a tudo
+    if (isOwner) return true
     
     switch (resource) {
       case 'dashboard':
-        return true // Dashboard disponível para todos
+        return true
       case 'orders':
         return permissions.canManageOrders
       case 'products':
         return permissions.canManageProducts
-      case 'marketplace':
-        return permissions.canManageProducts
-      case 'partnerships':
-        return permissions.canManageBusiness
-      case 'supplier':
-        return permissions.canManageBusiness
       case 'reports':
         return permissions.canViewAnalytics
       case 'tables':
@@ -133,13 +108,12 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
     router.push('/')
   }
 
-    const allSidebarItems = [
+  const allSidebarItems = [
     { id: 'dashboard', label: 'Visão Geral', icon: Home, href: '/dashboard', resource: 'dashboard', action: 'READ' as const },
     { id: 'orders', label: 'Pedidos', icon: ShoppingBag, href: '/orders', resource: 'orders', action: 'READ' as const },
     { id: 'products', label: 'Produtos', icon: Package, href: '/products', resource: 'products', action: 'READ' as const },
     { id: 'categories', label: 'Categorias', icon: Grid3x3, href: '/categories', resource: 'products', action: 'READ' as const },
     { id: 'additionals', label: 'Adicionais', icon: Plus, href: '/additionals', resource: 'products', action: 'READ' as const },
-    { id: 'marketplace', label: 'Marketplace B2B', icon: Building2, href: '/marketplace', resource: 'marketplace', action: 'READ' as const },
     { id: 'analytics', label: 'Relatórios', icon: BarChart, href: '/analytics', resource: 'reports', action: 'READ' as const },
     { id: 'tables', label: 'Mesas & QR', icon: QrCode, href: '/tables', resource: 'tables', action: 'READ' as const },
     { id: 'users', label: 'Funcionários', icon: Users, href: '/users', resource: 'employees', action: 'READ' as const },
@@ -147,11 +121,8 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
     { id: 'settings', label: 'Configurações', icon: Settings, href: '/settings', resource: 'settings', action: 'READ' as const }
   ]
 
-  // Filtrar itens do sidebar baseado nas permissões do usuário
   const sidebarItems = allSidebarItems.filter(item => {
-    // Dono do negócio tem acesso a tudo
     if (isOwner) return true
-    // Verificar se o usuário tem permissão para acessar o item
     return hasPermission(item.resource, item.action)
   })
 
@@ -181,7 +152,6 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
         {/* Navigation */}
         <nav className="flex-1 px-4 pt-1 pb-4 space-y-2 overflow-y-auto scrollbar-hide">
           {initialLoad ? (
-            // Skeleton para itens da sidebar apenas no carregamento inicial
             <>
               {Array.from({ length: 8 }).map((_, index) => (
                 <div key={index} className="flex items-center space-x-3 px-3 py-2">
@@ -249,7 +219,6 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
               )}
             </div>
             
-            {/* Mostrar o menu de ações apenas após o carregamento inicial */}
             {!initialLoad ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -263,10 +232,6 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
                     Meu Perfil
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setBillingDialogOpen(true)}>
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Gerenciar Assinatura
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSupportDialogOpen(true)}>
                     <HeadphonesIcon className="h-4 w-4 mr-2" />
                     Suporte
@@ -286,32 +251,7 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
         </div>
       </div>
 
-      {/* Dialogs */}
-      <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
-        <DialogContent className="min-w-6xl w-full max-h-[90vh] h-[90vh] overflow-y-auto scrollbar-hide">
-          <DialogHeader className="space-y-4">
-            <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Gerenciar Assinatura
-            </DialogTitle>
-            <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-                <TabsTrigger value="plans">Planos Disponíveis</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="overview" className="space-y-6 mt-6 h-[70vh] overflow-y-auto scrollbar-hide">
-                <BillingOverviewContent />
-              </TabsContent>
-
-              <TabsContent value="plans" className="space-y-6 mt-6 h-[70vh] overflow-y-auto scrollbar-hide">
-                <BillingPlansContent />
-              </TabsContent>
-            </Tabs>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
-
+      {/* Support Dialog */}
       <Dialog open={supportDialogOpen} onOpenChange={setSupportDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -320,7 +260,15 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
               Suporte
             </DialogTitle>
           </DialogHeader>
-          <SupportContent />
+          <div className="space-y-4">
+            <p className="text-slate-600">
+              Entre em contato com nosso suporte através dos canais abaixo:
+            </p>
+            <div className="space-y-2">
+              <p><strong>Email:</strong> suporte@fastlivery.com</p>
+              <p><strong>WhatsApp:</strong> (11) 99999-9999</p>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -352,37 +300,7 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
 
         {/* Page Content - Scrollable */}
         <main className="flex-1 overflow-y-auto scrollbar-hide">
-          {initialLoad ? (
-            // Skeleton para conteúdo principal apenas no carregamento inicial
-            <div className="p-6 space-y-6">
-              {/* Header skeleton */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <Skeleton className="h-8 w-48 mb-2" />
-                  <Skeleton className="h-4 w-64" />
-                </div>
-                <Skeleton className="h-10 w-32" />
-              </div>
-              
-              {/* Content skeleton */}
-              <div className="space-y-4">
-                <Skeleton className="h-6 w-full" />
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="h-6 w-5/6" />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <div key={index} className="space-y-3">
-                      <Skeleton className="h-32 w-full rounded-lg" />
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-4 w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            children
-          )}
+          {children}
         </main>
       </div>
     </div>

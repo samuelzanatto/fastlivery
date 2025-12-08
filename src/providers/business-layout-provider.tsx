@@ -1,7 +1,5 @@
 'use client'
 
-'use client'
-
 import { createContext, useContext, useState } from 'react'
 import useSWR from 'swr'
 import { useSession } from '@/lib/auth/auth-client'

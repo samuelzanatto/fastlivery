@@ -23,6 +23,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: business.name,
     description: business.description || `${business.name} - Delivery e Takeout`,
+    manifest: `/${resolvedParams.slug}/manifest.json`,
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: 'default',
+      title: business.name,
+    },
+    other: {
+      'mobile-web-app-capable': 'yes',
+      'apple-mobile-web-app-capable': 'yes',
+      'apple-mobile-web-app-status-bar-style': 'default',
+    }
   }
 }
 

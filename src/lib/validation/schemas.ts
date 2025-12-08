@@ -136,19 +136,6 @@ export const updateTableSchema = z.object({
 })
 
 // ==========================================
-// SCHEMAS DE PAGAMENTO
-// ==========================================
-
-export const mercadoPagoConfigSchema = z.object({
-  accessToken: z.string()
-    .min(1, 'Access token é obrigatório')
-    .regex(/^(TEST-|APP_USR-)[A-Za-z0-9\-_]+$/, 'Formato de access token inválido'),
-  publicKey: z.string()
-    .min(1, 'Public key é obrigatória')
-    .regex(/^(TEST-|APP_USR-)[A-Za-z0-9\-_]+$/, 'Formato de public key inválido')
-})
-
-// ==========================================
 // SCHEMAS DE AUTENTICAÇÃO
 // ==========================================
 
@@ -243,7 +230,6 @@ export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>
 export type CreateRoleInput = z.infer<typeof createRoleSchema>
 export type CreateTableInput = z.infer<typeof createTableSchema>
 export type UpdateTableInput = z.infer<typeof updateTableSchema>
-export type MercadoPagoConfigInput = z.infer<typeof mercadoPagoConfigSchema>
 export type SignupInput = z.infer<typeof signupSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type OtpInput = z.infer<typeof otpSchema>

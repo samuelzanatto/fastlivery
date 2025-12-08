@@ -70,20 +70,10 @@ export default function RootLayout({
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
         <link rel="mask-icon" href="/icons/favicon.svg" color="#1f2937" />
         
-        {/* Service Worker Cleanup Script */}
+        {/* Suprimir warnings de preload desnecessários */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              // Cleanup old service workers from PWA removal
-              if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                  for(let registration of registrations) {
-                    registration.unregister();
-                    console.log('Service Worker desregistrado:', registration.scope);
-                  }
-                });
-              }
-
               // Suprimir warnings de preload de recursos não utilizados
               const originalWarn = console.warn;
               console.warn = function() {
@@ -100,6 +90,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${poppins.variable} font-sans antialiased md:scrollbar-auto scrollbar-hide`}
+        suppressHydrationWarning
       >
         <SWRProvider>
           <PageTransitionProvider>

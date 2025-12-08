@@ -14,7 +14,6 @@ import {
   validateData,
   validateId 
 } from '@/lib/actions/validation-helpers'
-import { withLimitCheck } from '@/lib/actions/billing-helpers'
 
 export interface Table {
   id: string
@@ -135,11 +134,12 @@ export const getTable = withBusiness(_getTable)
  * Criar nova mesa
  */
 async function _createTable(
-  businessId: string,
+  { business }: BusinessContext,
   input: TableCreateInput
 ): Promise<ActionResult<Table>> {
   try {
     const validatedData = validateData(TableSchema, input)
+    const businessId = business.id
 
     // Verificar se já existe uma mesa com o mesmo número
     const existingTable = await prisma.table.findFirst({
@@ -179,7 +179,7 @@ async function _createTable(
   }
 }
 
-export const createTable = withLimitCheck('table', _createTable)
+export const createTable = withBusiness(_createTable)
 
 /**
  * Atualizar mesa

@@ -8,7 +8,6 @@ import {
   withBusiness,
   BusinessContext
 } from '@/lib/actions/auth-helpers'
-import { withFeatureAccess } from '@/lib/actions/billing-helpers'
 
 export interface DashboardStats {
   todayOrders: number
@@ -355,10 +354,9 @@ async function _getOrdersByType(
 export const getOrdersByType = withBusiness(_getOrdersByType)
 
 /**
- * Obter dados avançados de analytics (apenas para planos Pro+)
+ * Obter dados avançados de analytics
  */
 async function _getAdvancedAnalytics(
-  businessId: string,
   { business }: BusinessContext
 ): Promise<ActionResult<{
   averageOrderValue: number
@@ -415,7 +413,7 @@ async function _getAdvancedAnalytics(
   }
 }
 
-export const getAdvancedAnalytics = withFeatureAccess('analytics', _getAdvancedAnalytics)
+export const getAdvancedAnalytics = withBusiness(_getAdvancedAnalytics)
 
 /**
  * Get dashboard overview data - equivalent to /api/dashboard/overview
@@ -444,22 +442,18 @@ export async function getDashboardOverview(): Promise<ActionResult<{
   }
 }>> {
   try {
-    const context = await import('@/lib/actions/auth-helpers').then(m => m.getAuthenticatedUserContext())
+    const { business } = await import('@/lib/actions/auth-helpers').then(m => m.getAuthenticatedUserBusiness())
     
-    // Verificar se é um Business (empresa de delivery) ou Company (fornecedor)
-    if ('business' in context) {
-      const { business } = context
-
-      // Buscar dados da subscription do negócio
-      const businessData = await prisma.business.findFirst({
-        where: { id: business.id },
-        select: {
-          id: true,
-          name: true,
-          isOpen: true,
-          subscription: {
-            select: {
-              planId: true,
+    // Buscar dados da subscription do negócio
+    const businessData = await prisma.business.findFirst({
+      where: { id: business.id },
+      select: {
+        id: true,
+        name: true,
+        isOpen: true,
+        subscription: {
+          select: {
+            planId: true,
               status: true
             }
           }
@@ -540,10 +534,6 @@ export async function getDashboardOverview(): Promise<ActionResult<{
           plan: businessData?.subscription?.planId || 'free'
         }
       })
-    } else {
-      // É um Company (fornecedor) - redirecionar para supplier-dashboard
-      throw new Error('Fornecedores devem usar /supplier-dashboard')
-    }
   } catch (error) {
     return handleActionError(error)
   }

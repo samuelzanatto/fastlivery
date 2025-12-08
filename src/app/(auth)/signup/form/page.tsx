@@ -36,7 +36,22 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { BillingPlan } from '@/actions/subscription/subscription'
+
+// Tipo de plano de cobrança da API
+interface BillingPlan {
+  id: string
+  name: string
+  price: string
+  priceId?: string
+  description: string
+  metadata?: {
+    maxOrders?: number
+    maxProducts?: number
+    maxTables?: number
+    maxUsers?: number
+    planKey?: string
+  }
+}
 
 // Interfaces de tipos
 interface PlanLimits {

@@ -170,7 +170,7 @@ export default function UsersPage() {
         notes: formData.notes
       }
 
-  const result = await createEmployee(businessId, employeeData, session.user.id)
+  const result = await createEmployee(employeeData)
       
       if (result.success) {
         // Fechar dialog de criação e abrir dialog OTP

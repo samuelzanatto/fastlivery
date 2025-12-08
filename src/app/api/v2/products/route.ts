@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
     
-    const result = await createProduct('', data)
+    const result = await createProduct(data)
 
     if (!result.success) {
       return NextResponse.json(

@@ -62,6 +62,77 @@ export function useBusinessOrdersRealtime({
   }, [onOrderCreated, onOrderUpdated, onOrderStatusChanged])
 
   const handleMessage = useCallback((message: RealtimeMessage) => {
+    console.log('[useBusinessOrdersRealtime] Mensagem recebida:', message.type, message)
+
+    // Tratar mensagens do postgres_changes (database_insert, database_update, database_delete)
+    if (message.type === 'database_insert' || message.type === 'database_update' || message.type === 'database_delete') {
+      const dbPayload = message.payload as {
+        eventType: string
+        new: Record<string, unknown>
+        old: Record<string, unknown>
+        table: string
+      }
+
+      // Verificar se é da tabela orders e do business correto
+      if (dbPayload.table !== 'orders') return
+      
+      const newData = dbPayload.new
+      const oldData = dbPayload.old
+
+      // Verificar businessId
+      if (newData?.businessId !== businessId && oldData?.businessId !== businessId) return
+
+      const order: BusinessOrder = {
+        id: (newData?.id || oldData?.id) as string,
+        orderNumber: (newData?.orderNumber || oldData?.orderNumber) as string,
+        status: (newData?.status || oldData?.status) as string,
+        type: (newData?.type || oldData?.type) as string,
+        customerName: (newData?.customerName || oldData?.customerName) as string,
+        customerPhone: (newData?.customerPhone || oldData?.customerPhone) as string,
+        total: (newData?.total || oldData?.total) as number,
+        items: [], // Items precisam ser buscados separadamente
+        createdAt: (newData?.createdAt || oldData?.createdAt) as string,
+        updatedAt: (newData?.updatedAt || oldData?.updatedAt) as string
+      }
+
+      if (message.type === 'database_insert') {
+        console.log('[useBusinessOrdersRealtime] Novo pedido via postgres_changes:', order.orderNumber)
+        setOrders(prev => {
+          const exists = prev.find(o => o.id === order.id)
+          if (!exists) {
+            setNewOrderCount(count => count + 1)
+            callbacksRef.current.onOrderCreated?.(order)
+            return [order, ...prev]
+          }
+          return prev
+        })
+      } else if (message.type === 'database_update') {
+        console.log('[useBusinessOrdersRealtime] Pedido atualizado via postgres_changes:', order.orderNumber)
+        const oldStatus = (oldData?.status as string) || ''
+        const newStatus = order.status
+
+        if (oldStatus !== newStatus) {
+          callbacksRef.current.onOrderStatusChanged?.(order, oldStatus)
+        } else {
+          callbacksRef.current.onOrderUpdated?.(order)
+        }
+
+        setOrders(prev => {
+          const exists = prev.find(o => o.id === order.id)
+          if (exists) {
+            return prev.map(o => o.id === order.id ? { ...o, ...order } : o)
+          } else {
+            // Pedido não existe ainda, adicionar
+            setNewOrderCount(count => count + 1)
+            callbacksRef.current.onOrderCreated?.(order)
+            return [order, ...prev]
+          }
+        })
+      }
+      return
+    }
+
+    // Tratar mensagens broadcast (business_order_created, etc.)
     if (message.businessId !== businessId) return
 
     const payload = message.payload as OrderRealtimePayload
@@ -113,7 +184,11 @@ export function useBusinessOrdersRealtime({
   const { isConnected, error, sendMessage } = useRealtimeChannel(
     channelName,
     handleMessage,
-    { enabled: enabled && !!businessId }
+    { 
+      enabled: enabled && !!businessId,
+      private: false // Usar canal público para receber broadcasts do banco
+      // Removido table: 'orders' pois estamos usando broadcast via trigger
+    }
   )
 
   const markOrdersSeen = useCallback(() => {

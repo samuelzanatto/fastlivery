@@ -160,10 +160,7 @@ export const BusinessUpdateSchema = z.object({
   deliveryTime: z.number().int().min(1, 'Tempo de entrega deve ser pelo menos 1 minuto').default(30),
   acceptsDelivery: z.boolean().default(true),
   acceptsPickup: z.boolean().default(true),
-  acceptsDineIn: z.boolean().default(true),
-  mercadoPagoAccessToken: z.string().optional(),
-  mercadoPagoPublicKey: z.string().optional(),
-  mercadoPagoConfigured: z.boolean().default(false)
+  acceptsDineIn: z.boolean().default(true)
 })
 
 /**

@@ -18,7 +18,6 @@ import {
   validateData,
   validateId 
 } from '@/lib/actions/validation-helpers'
-import { withLimitCheck } from '@/lib/actions/billing-helpers'
 
 // Enums e types
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED'
@@ -343,11 +342,12 @@ export const getOrder = withBusiness(_getOrder)
  * Criar novo pedido
  */
 async function _createOrder(
-  businessId: string,
+  { business: contextBusiness }: BusinessContext,
   input: OrderCreateInput
 ): Promise<ActionResult<{ id: string; orderNumber: string; total: number }>> {
   try {
     const validatedData = validateData(OrderSchema, input)
+    const businessId = contextBusiness.id
 
     // Para delivery, verificar se o usuário está logado
     if (validatedData.type === 'DELIVERY') {
@@ -368,6 +368,8 @@ async function _createOrder(
       select: { 
         id: true, 
         name: true, 
+        slug: true,
+        avatar: true,
         deliveryFee: true, 
         minimumOrder: true,
         acceptsDelivery: true,
@@ -478,6 +480,17 @@ async function _createOrder(
     // Log para monitoring
     console.log(`[LOG] Novo pedido criado para negócio ${order.businessId}:`, order.orderNumber)
 
+    // Envia push notification para funcionários (não bloqueia a resposta)
+    sendNewOrderPushNotification({
+      businessId: business.id,
+      businessName: business.name,
+      businessLogo: business.avatar,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      total: order.total,
+      items: validatedItems.length
+    }).catch(err => console.error('[Push] Erro ao enviar notificação de novo pedido:', err))
+
     revalidatePath('/dashboard/orders')
     revalidatePath('/dashboard')
     
@@ -491,7 +504,9 @@ async function _createOrder(
   }
 }
 
-export const createOrder = withLimitCheck('order', _createOrder)
+export const createOrder = withBusiness(_createOrder)
+
+import { sendOrderStatusPushNotification, sendNewOrderPushNotification } from '@/actions/push/push-notifications'
 
 /**
  * Atualizar status do pedido
@@ -516,9 +531,21 @@ async function _updateOrderStatus(
             product: { select: { name: true } }
           }
         },
-        table: { select: { number: true } }
+        table: { select: { number: true } },
+        user: { select: { id: true } }
       }
     })
+
+    // Envia push notification para o cliente (não bloqueia a resposta)
+    sendOrderStatusPushNotification(status, {
+      businessId: business.id,
+      businessName: business.name,
+      businessLogo: business.avatar,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      userId: order.user?.id,
+      slug: business.slug
+    }).catch(err => console.error('[Push] Erro ao enviar notificação:', err))
 
     revalidatePath('/dashboard/orders')
     revalidatePath('/dashboard')
@@ -570,9 +597,7 @@ async function _cancelOrderWithRefund(
           select: {
             id: true,
             name: true,
-            ownerId: true,
-            mercadoPagoAccessToken: true,
-            mercadoPagoConfigured: true
+            ownerId: true
           }
         },
         payments: true
@@ -614,77 +639,26 @@ async function _cancelOrderWithRefund(
     }
 
     // Processar reembolso se pagamento foi aprovado
-    let refundResult = null
+    // NOTA: Integração de pagamentos removida - reembolsos devem ser processados manualmente
     if (order.paymentStatus === 'APPROVED' && order.paymentMethod !== 'MONEY') {
-      try {
-        if (order.paymentMethod === 'PIX' || order.stripeSessionId?.startsWith('pref_')) {
-          // MercadoPago - buscar payment ID
-          const { createMercadoPagoService } = await import('@/lib/payments/mercadopago')
-          const mercadoPagoService = await createMercadoPagoService(order.businessId)
-          
-          // Buscar payment pelo external_reference ou stripeSessionId
-          let paymentId = order.stripeSessionId
-          
-          // Se começar com "pref_", é uma preferência do Checkout Pro
-          if (paymentId?.startsWith('pref_')) {
-            // Buscar pagamento associado à preferência
-            const payment = order.payments.find(p => p.status === 'APPROVED')
-            if (payment?.preferenceId) {
-              // Buscar o pagamento no MercadoPago
-              const mpPayment = await mercadoPagoService.getPaymentById(payment.preferenceId)
-              if (mpPayment) {
-                paymentId = String(mpPayment.id)
-              }
-            }
-          }
-
-          if (paymentId) {
-            console.log('Processando reembolso MercadoPago:', { paymentId, orderNumber: order.orderNumber })
-            refundResult = await mercadoPagoService.createRefund(paymentId, order.total)
-            
-            // Atualizar registro de Payment
-            await prisma.payment.updateMany({
-              where: { orderId: order.id },
-              data: {
-                status: 'CANCELLED',
-                metadata: {
-                  refund_id: refundResult.id,
-                  refund_status: refundResult.status,
-                  refund_amount: refundResult.amount,
-                  cancelled_at: new Date().toISOString(),
-                  cancel_reason: reason || 'Cancelado pelo negócio'
-                }
-              }
-            })
-          }
-        } else if (order.stripeSessionId) {
-          // Stripe - processar reembolso
-          const { default: Stripe } = await import('stripe')
-          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-            apiVersion: '2025-08-27.basil'
-          })
-          
-          console.log('Processando reembolso Stripe:', { sessionId: order.stripeSessionId, orderNumber: order.orderNumber })
-          
-          // Buscar session e payment intent
-          const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId)
-          if (session.payment_intent && typeof session.payment_intent === 'string') {
-            refundResult = await stripe.refunds.create({
-              payment_intent: session.payment_intent,
-              amount: Math.round(order.total * 100), // Stripe usa centavos
-              reason: 'requested_by_customer',
-              metadata: {
-                order_id: order.id,
-                order_number: order.orderNumber,
-                cancel_reason: reason || 'Cancelado pelo negócio'
-              }
-            })
+      console.log('Pedido com pagamento aprovado cancelado - reembolso deve ser processado manualmente:', { 
+        orderNumber: order.orderNumber,
+        paymentMethod: order.paymentMethod,
+        total: order.total
+      })
+      
+      // Atualizar registro de Payment para CANCELLED
+      await prisma.payment.updateMany({
+        where: { orderId: order.id },
+        data: {
+          status: 'CANCELLED',
+          metadata: {
+            cancelled_at: new Date().toISOString(),
+            cancel_reason: reason || 'Cancelado pelo negócio',
+            refund_note: 'Reembolso deve ser processado manualmente'
           }
         }
-      } catch (refundError) {
-        console.error('Erro ao processar reembolso:', refundError)
-        // Continue com o cancelamento mesmo se o reembolso falhar
-      }
+      })
     }
 
     // Cancelar o pedido
@@ -710,16 +684,16 @@ async function _cancelOrderWithRefund(
         status: updatedOrder.status as string,
         paymentStatus: updatedOrder.paymentStatus as string
       },
-      refund: refundResult ? {
-        id: String(refundResult.id || 'unknown'),
-        status: refundResult.status || 'unknown',
-        amount: refundResult.amount || 0,
-        message: 'Reembolso processado automaticamente'
-      } : order.paymentMethod === 'MONEY' ? {
+      refund: order.paymentMethod === 'MONEY' ? {
         id: 'manual',
         status: 'not_required',
         amount: 0,
         message: 'Pagamento em dinheiro - sem necessidade de reembolso automático'
+      } : order.paymentStatus === 'APPROVED' ? {
+        id: 'manual_refund_required',
+        status: 'pending',
+        amount: order.total,
+        message: 'Reembolso deve ser processado manualmente'
       } : null
     })
   } catch (error) {

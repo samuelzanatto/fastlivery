@@ -19,6 +19,7 @@ export interface UserBusiness {
   id: string
   name: string
   slug: string | null
+  avatar: string | null
   isOpen: boolean
   openingHours: string | null
   deliveryFee: number
@@ -85,6 +86,7 @@ export async function getAuthenticatedUserBusiness(): Promise<BusinessContext> {
       id: true,
       name: true,
       slug: true,
+      avatar: true,
       isOpen: true,
       openingHours: true,
       deliveryFee: true,
@@ -100,89 +102,6 @@ export async function getAuthenticatedUserBusiness(): Promise<BusinessContext> {
   }
 
   return { user, business }
-}
-
-export interface UserCompany {
-  id: string
-  name: string
-  slug: string | null
-  isActive: boolean
-  type: string
-}
-
-export interface CompanyContext {
-  user: AuthenticatedUser
-  company: UserCompany
-}
-
-/**
- * Helper para obter empresa/fornecedor do usuário autenticado
- */
-export async function getAuthenticatedUserCompany(): Promise<CompanyContext> {
-  const user = await getAuthenticatedUser()
-
-  const company = await prisma.company.findFirst({
-    where: { ownerId: user.id },
-    select: { 
-      id: true,
-      name: true,
-      slug: true,
-      isActive: true,
-      type: true
-    }
-  })
-
-  if (!company) {
-    throw new BusinessNotFoundError('Empresa não encontrada')
-  }
-
-  return { user, company }
-}
-
-/**
- * Helper para obter dados baseado no tipo de usuário (Business ou Company)
- */
-export async function getAuthenticatedUserContext(): Promise<BusinessContext | CompanyContext> {
-  const user = await getAuthenticatedUser()
-
-  // Tentar buscar Business primeiro (para empresas de delivery tradicionais)
-  const business = await prisma.business.findFirst({
-    where: { ownerId: user.id },
-    select: { 
-      id: true,
-      name: true,
-      slug: true,
-      isOpen: true,
-      openingHours: true,
-      deliveryFee: true,
-      minimumOrder: true,
-      acceptsDelivery: true,
-      acceptsPickup: true,
-      acceptsDineIn: true
-    }
-  })
-
-  if (business) {
-    return { user, business }
-  }
-
-  // Se não encontrar Business, buscar Company (para fornecedores)
-  const company = await prisma.company.findFirst({
-    where: { ownerId: user.id },
-    select: { 
-      id: true,
-      name: true,
-      slug: true,
-      isActive: true,
-      type: true
-    }
-  })
-
-  if (company) {
-    return { user, company }
-  }
-
-  throw new BusinessNotFoundError('Negócio ou empresa não encontrada')
 }
 
 /**
@@ -254,22 +173,6 @@ export function withBusiness<T extends unknown[], R>(
     try {
       const businessData = await getAuthenticatedUserBusiness()
       return await action(businessData, ...args)
-    } catch (error) {
-      return handleActionError(error) as ActionResult<R>
-    }
-  }
-}
-
-/**
- * Decorator para Server Actions que precisam de empresa/fornecedor
- */
-export function withCompany<T extends unknown[], R>(
-  action: (companyData: CompanyContext, ...args: T) => Promise<ActionResult<R>>
-) {
-  return async (...args: T): Promise<ActionResult<R>> => {
-    try {
-      const companyData = await getAuthenticatedUserCompany()
-      return await action(companyData, ...args)
     } catch (error) {
       return handleActionError(error) as ActionResult<R>
     }

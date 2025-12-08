@@ -15,7 +15,7 @@ export function useRealtimeChannel(
     private?: boolean
     table?: string
     schema?: string
-  } = { enabled: true, private: true }
+  } = { enabled: true, private: false }
 ) {
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)

@@ -32,9 +32,8 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
     
-    // Para createEmployee com withLimitCheck, precisamos dos parâmetros necessários
-    // Assumindo que o businessId e userId vêm do contexto de autenticação
-    const result = await createEmployee('', data, '')
+    // createEmployee agora usa withBusiness internamente
+    const result = await createEmployee(data)
 
     if (!result.success) {
       return NextResponse.json(

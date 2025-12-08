@@ -23,10 +23,11 @@ export async function POST(request: NextRequest) {
     // Obter secret do Supabase JWT
     const supabaseJwtSecret = process.env.SUPABASE_JWT_SECRET
     if (!supabaseJwtSecret) {
-      console.error('[supabase-token] SUPABASE_JWT_SECRET não configurado')
+      // Retornar 503 para indicar que o serviço não está disponível (configuração incompleta)
+      // O cliente deve tratar isso graciosamente
       return NextResponse.json(
-        { error: 'Configuração do servidor incompleta' },
-        { status: 500 }
+        { error: 'Realtime não configurado', code: 'REALTIME_NOT_CONFIGURED' },
+        { status: 503 }
       )
     }
 

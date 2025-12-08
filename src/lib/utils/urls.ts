@@ -32,12 +32,7 @@ export function getAppUrl(): string {
 export function getAllowedOrigins(): string[] {
   const origins = [
     // URL principal da aplicação
-    process.env.NEXT_PUBLIC_APP_URL,
-    
-    // URLs específicas do Mercado Pago (sempre permitidas)
-    'https://sdk.mercadopago.com',
-    'https://api.mercadopago.com',
-    'https://secure.mlstatic.com',
+    process.env.NEXT_PUBLIC_APP_URL
   ]
   
   // Em desenvolvimento, adicionar URLs locais dinamicamente
@@ -107,19 +102,6 @@ export function getStripeCallbackUrls(type: 'subscription' | 'checkout' = 'check
 }
 
 /**
- * Obtem URLs de callback para MercadoPago
- */
-export function getMercadoPagoCallbackUrls(orderNumber: string) {
-  const baseUrl = getAppUrl()
-  
-  return {
-    success: `${baseUrl}/checkout/success?order=${orderNumber}`,
-    failure: `${baseUrl}/checkout/failure?order=${orderNumber}`,
-    pending: `${baseUrl}/checkout/pending?order=${orderNumber}`
-  }
-}
-
-/**
  * Verifica se deve configurar notification URL (apenas HTTPS em produção)
  */
 export function shouldSetNotificationUrl(): boolean {
@@ -128,17 +110,9 @@ export function shouldSetNotificationUrl(): boolean {
 }
 
 /**
- * Obtem URL de webhook baseada no ambiente
+ * Obtem URL de webhook para Stripe
  */
-export function getWebhookUrl(provider: 'stripe' | 'mercadopago'): string {
+export function getWebhookUrl(): string {
   const baseUrl = getAppUrl()
-  
-  switch (provider) {
-    case 'stripe':
-      return `${baseUrl}/api/auth/stripe/webhook`
-    case 'mercadopago':
-      return `${baseUrl}/api/webhooks/mercadopago`
-    default:
-      throw new Error(`Provider ${provider} não suportado`)
-  }
+  return `${baseUrl}/api/auth/stripe/webhook`
 }

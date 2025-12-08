@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from '@/lib/auth/auth-client'
-import { notify } from '@/lib/notifications/notify'
 import { useAutoOpenClose } from '@/hooks/business/use-auto-open-close'
 import { useBusinessStatus } from '@/hooks/business/use-business-status'
 import { parseOpeningHours, type WeeklyHours } from '@/lib/utils/business-hours'
@@ -13,6 +12,7 @@ import { IntegratedCheckout } from '@/components/checkout/integrated-checkout'
 import { ProductOptionsModal } from '@/components/checkout/product-options-modal'
 import { CartProvider, useCart } from '@/contexts/cart-context'
 import { getProductWithOptions } from '@/actions/products/products'
+import { PWAServiceWorker } from '@/components/pwa/pwa-service-worker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -31,6 +31,8 @@ import {
   Timer,
   ChevronDown
 } from 'lucide-react'
+
+
 
 interface ProductOptionItem {
   id: string
@@ -161,7 +163,6 @@ function BusinessPageContent() {
         const businessResponse = await fetch(`/api/business/${slug}`)
 
         if (!businessResponse.ok) {
-          notify('error', 'Negócio não encontrado')
           router.push('/')
           return
         }
@@ -190,9 +191,7 @@ function BusinessPageContent() {
           }
         }
         
-  notify('success', 'Cardápio carregado com sucesso!')
       } catch {
-        notify('error', 'Erro ao carregar a empresa')
         router.push('/')
       } finally {
         setIsLoading(false)
@@ -207,7 +206,6 @@ function BusinessPageContent() {
 
     // Verificar se o negócio pode aceitar pedidos
     if (businessStatus && !businessStatus.canAcceptOrders) {
-      notify('error', businessStatus.message || 'Negócio não está aceitando pedidos no momento')
       return
     }
     
@@ -227,7 +225,6 @@ function BusinessPageContent() {
   const handleProductClick = async (product: Product) => {
     // Verificar se o negócio pode aceitar pedidos
     if (businessStatus && !businessStatus.canAcceptOrders) {
-      notify('error', businessStatus.message || 'Empresa não está aceitando pedidos no momento')
       return
     }
     
@@ -259,7 +256,6 @@ function BusinessPageContent() {
 
     // Verificar se o negócio pode aceitar pedidos
     if (businessStatus && !businessStatus.canAcceptOrders) {
-      notify('error', businessStatus.message || 'Empresa não está aceitando pedidos no momento')
       return
     }
 
@@ -313,18 +309,12 @@ function BusinessPageContent() {
     // Para delivery, verificar se o usuário está logado
     if (type === 'DELIVERY') {
       if (!session?.user) {
-  notify('error', 'É necessário fazer login para pedidos delivery')
         router.push(`/customer-login?redirectTo=${encodeURIComponent(`/${params.slug}`)}`)
         return
       }
     }
     
     setOrderType(type)
-    notify('success', `Modalidade selecionada: ${
-      type === 'DELIVERY' ? 'Delivery' : 
-      type === 'PICKUP' ? 'Retirada' : 
-      'Consumo Local'
-    }`)
   }
 
   const getCartItemQuantity = (productId: string) => {
@@ -389,27 +379,28 @@ function BusinessPageContent() {
             {/* Empresa Details - Centered Layout */}
             <Collapsible open={showDetails} onOpenChange={setShowDetails}>
               <div className="text-center space-y-3">
-                {/* Name, Status and Collapsible Trigger */}
+                {/* Name and Collapsible Trigger */}
                 <div className="flex items-center justify-center gap-3">
                   <h1 className="text-xl sm:text-2xl font-bold text-slate-800">
                     {business.name}
                   </h1>
-                  {/* Status Badge - Atualizado com status em tempo real */}
-                  {statusLoading ? (
-                    <Badge variant="secondary" className="text-xs animate-pulse">Verificando...</Badge>
-                  ) : businessStatus?.canAcceptOrders ? (
-                    <Badge className="bg-green-100 text-green-800 text-xs">Aberto - Aceitando Pedidos</Badge>
-                  ) : businessStatus?.isOpen ? (
-                    <Badge className="bg-yellow-100 text-yellow-800 text-xs">Aberto - Não Aceitando Pedidos</Badge>
-                  ) : (
-                    <Badge className="bg-red-100 text-red-800 text-xs">Fechado</Badge>
-                  )}
                   <CollapsibleTrigger asChild>
                     <Button variant="ghost" size="sm" className="text-slate-600 hover:text-slate-800 p-1 h-auto ml-1">
                       <ChevronDown className={`h-4 w-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
                     </Button>
                   </CollapsibleTrigger>
                 </div>
+                
+                {/* Status Badge - Abaixo do nome */}
+                {statusLoading ? (
+                  <Badge variant="secondary" className="text-xs animate-pulse">Verificando...</Badge>
+                ) : businessStatus?.canAcceptOrders ? (
+                  <Badge className="bg-green-100 text-green-800 text-xs">Aberto - Aceitando Pedidos</Badge>
+                ) : businessStatus?.isOpen ? (
+                  <Badge className="bg-yellow-100 text-yellow-800 text-xs">Aberto - Não Aceitando Pedidos</Badge>
+                ) : (
+                  <Badge className="bg-red-100 text-red-800 text-xs">Fechado</Badge>
+                )}
                 
                 <CollapsibleContent className="mt-3 space-y-3">
                   {/* Description */}
@@ -452,7 +443,7 @@ function BusinessPageContent() {
           </div>
         </div>
 
-        {/* Order Type Selection - Mobile PWA Optimized */}
+        {/* Order Type Selection */}
         <div className="px-4">
           <div className="text-center mb-6">
             <h2 className="text-md sm:text-2xl font-bold text-slate-800 mb-2">
@@ -460,8 +451,7 @@ function BusinessPageContent() {
             </h2>
           </div>
           
-          {/* Stack vertically on mobile */}
-          <div className="space-y-3 max-w-md mx-auto">
+          <div className="space-y-3 max-w-md mx-auto mb-24">
             {business.acceptsDelivery && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -538,6 +528,14 @@ function BusinessPageContent() {
             )}
           </div>
         </div>
+
+        {/* PWA Service Worker Registration */}
+        <PWAServiceWorker />
+
+        <IntegratedCheckout 
+          businessSlug={params.slug as string} 
+          businessStatus={businessStatus}
+        />
       </div>
     )
   }
@@ -578,9 +576,9 @@ function BusinessPageContent() {
                           onClick={() => setSelectedCategory(mainCategory.name)}
                           variant={selectedCategory === mainCategory.name ? 'default' : 'outline'}
                           size="sm"
-                          className="whitespace-nowrap text-xs px-3 py-1.5 h-auto font-semibold bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100"
+                          className="whitespace-nowrap text-xs px-3 py-1.5 h-auto"
                         >
-                          📁 {mainCategory.name}
+                          {mainCategory.name}
                         </Button>
                         {mainCategory.subcategories && mainCategory.subcategories.map((subcategory) => (
                           <Button
@@ -588,9 +586,9 @@ function BusinessPageContent() {
                             onClick={() => setSelectedCategory(subcategory.name)}
                             variant={selectedCategory === subcategory.name ? 'default' : 'outline'}
                             size="sm"
-                            className="whitespace-nowrap text-xs px-3 py-1.5 h-auto bg-orange-50 border-orange-200 text-orange-800 hover:bg-orange-100"
+                            className="whitespace-nowrap text-xs px-3 py-1.5 h-auto"
                           >
-                            📂 {subcategory.name}
+                            {subcategory.name}
                           </Button>
                         ))}
                       </React.Fragment>
@@ -638,9 +636,9 @@ function BusinessPageContent() {
                           <Button
                             onClick={() => setSelectedCategory(mainCategory.name)}
                             variant={selectedCategory === mainCategory.name ? 'default' : 'ghost'}
-                            className="w-full justify-start text-sm font-semibold bg-blue-50 hover:bg-blue-100 text-blue-900"
+                            className="w-full justify-start text-sm"
                           >
-                            📁 {mainCategory.name}
+                            {mainCategory.name}
                           </Button>
                           {mainCategory.subcategories && mainCategory.subcategories.length > 0 && (
                             <div className="ml-4 space-y-1">
@@ -649,9 +647,9 @@ function BusinessPageContent() {
                                   key={subcategory.id}
                                   onClick={() => setSelectedCategory(subcategory.name)}
                                   variant={selectedCategory === subcategory.name ? 'default' : 'ghost'}
-                                  className="w-full justify-start text-sm bg-orange-50 hover:bg-orange-100 text-orange-800"
+                                  className="w-full justify-start text-sm"
                                 >
-                                  📂 {subcategory.name}
+                                  {subcategory.name}
                                 </Button>
                               ))}
                             </div>
@@ -792,6 +790,9 @@ function BusinessPageContent() {
           </div>
         </div>
       </div>
+      
+      {/* PWA Service Worker Registration */}
+      <PWAServiceWorker />
       
       {/* Floating Checkout Cart */}
       <IntegratedCheckout 

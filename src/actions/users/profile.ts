@@ -47,7 +47,6 @@ export interface UserWithBusiness extends UserProfile {
       planId: string
       status: string
       currentPeriodEnd: Date | null
-      stripePriceId: string | null
     } | null
   } | null
 }
@@ -107,7 +106,6 @@ async function _getUserProfile(): Promise<ActionResult<UserWithBusiness>> {
                 planId: true,
                 status: true,
                 currentPeriodEnd: true,
-                stripePriceId: true,
               },
             },
           },

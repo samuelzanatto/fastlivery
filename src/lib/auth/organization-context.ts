@@ -7,7 +7,8 @@
 
 import { auth } from '@/lib/auth/auth'
 import { headers as nextHeaders } from 'next/headers'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/database/prisma'
+import type { PrismaClient } from '@prisma/client'
 
 /**
  * Interface para opções de query com contexto organizacional
@@ -37,10 +38,10 @@ export interface OrganizationQueryResult<T> {
  * Classe utilitária para queries com contexto organizacional
  */
 export class OrganizationContext {
-  private prisma: PrismaClient
+  private prismaClient: typeof prisma
 
-  constructor(prismaInstance?: PrismaClient) {
-    this.prisma = prismaInstance || new PrismaClient()
+  constructor(prismaInstance?: typeof prisma) {
+    this.prismaClient = prismaInstance || prisma
   }
 
   /**
@@ -70,7 +71,7 @@ export class OrganizationContext {
   async getBusinesses(options: OrganizationQueryOptions = {}) {
     const { userId, organizationId } = await this.getOrganizationContext(options)
 
-    const businesses = await this.prisma.business.findMany({
+    const businesses = await this.prismaClient.business.findMany({
       where: {
         ownerId: userId
       },
@@ -125,7 +126,7 @@ export class OrganizationContext {
       whereClause.createdAt = createdAtFilter
     }
 
-    const orders = await this.prisma.order.findMany({
+    const orders = await this.prismaClient.order.findMany({
       where: whereClause,
       include: {
         business: {
@@ -187,7 +188,7 @@ export class OrganizationContext {
       ]
     }
 
-    const products = await this.prisma.product.findMany({
+    const products = await this.prismaClient.product.findMany({
       where: whereClause,
       include: {
         category: {
@@ -233,7 +234,7 @@ export class OrganizationContext {
       whereClause.isActive = options.isActive
     }
 
-    const members = await this.prisma.member.findMany({
+    const members = await this.prismaClient.member.findMany({
       where: whereClause,
       include: {
         user: {
@@ -290,16 +291,16 @@ export class OrganizationContext {
       averageOrderValue
     ] = await Promise.all([
       // Total de pedidos
-      this.prisma.order.count({ where: baseWhere }),
+      this.prismaClient.order.count({ where: baseWhere }),
       
       // Revenue total
-      this.prisma.order.aggregate({
+      this.prismaClient.order.aggregate({
         where: baseWhere,
         _sum: { total: true }
       }),
       
       // Valor médio do pedido
-      this.prisma.order.aggregate({
+      this.prismaClient.order.aggregate({
         where: baseWhere,
         _avg: { total: true }
       })
@@ -324,12 +325,12 @@ export class OrganizationContext {
    * Executar query customizada com contexto organizacional automático
    */
   async executeWithContext<T>(
-    queryFn: (prisma: PrismaClient, context: { organizationId: string | null, userId: string }) => Promise<T>,
+    queryFn: (prismaInstance: typeof prisma, context: { organizationId: string | null, userId: string }) => Promise<T>,
     options: OrganizationQueryOptions = {}
   ): Promise<OrganizationQueryResult<T>> {
     const { userId, organizationId } = await this.getOrganizationContext(options)
 
-    const data = await queryFn(this.prisma, { organizationId, userId })
+    const data = await queryFn(this.prismaClient, { organizationId, userId })
 
     return {
       data,
@@ -352,7 +353,7 @@ export const organizationContext = new OrganizationContext()
  * Buscar dados com contexto organizacional automático
  */
 export async function withOrganizationContext<T>(
-  queryFn: (prisma: PrismaClient, context: { organizationId: string | null, userId: string }) => Promise<T>,
+  queryFn: (prismaInstance: typeof prisma, context: { organizationId: string | null, userId: string }) => Promise<T>,
   options: OrganizationQueryOptions = {}
 ): Promise<OrganizationQueryResult<T>> {
   return organizationContext.executeWithContext(queryFn, options)
@@ -387,18 +388,13 @@ export async function hasOrganizationAccess(
     return true
   }
 
-  // Verificar se é membro da organização via Prisma
-  const prisma = new PrismaClient()
-  try {
-    const member = await prisma.member.findFirst({
-      where: {
-        organizationId,
-        userId: session.user.id,
-        isActive: true
-      }
-    })
-    return !!member
-  } finally {
-    await prisma.$disconnect()
-  }
+  // Verificar se é membro da organização via Prisma compartilhado
+  const member = await prisma.member.findFirst({
+    where: {
+      organizationId,
+      userId: session.user.id,
+      isActive: true
+    }
+  })
+  return !!member
 }

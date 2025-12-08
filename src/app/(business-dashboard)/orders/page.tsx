@@ -290,7 +290,7 @@ const mapDbOrderStatus = (raw?: string): OrderStatus => {
 const mapDbPaymentStatus = (raw?: string): PaymentStatus => {
   if (!raw) return 'pending'
   const v = raw.toUpperCase()
-  // Normalizar variações possíveis vindas de gateways (MercadoPago etc.)
+  // Normalizar variações possíveis de status de pagamento
   if ([
     'PENDING', 'IN_PROCESS', 'IN_PROCESSING', 'AUTHORIZED', 'IN_PROGRESS'
   ].includes(v)) return 'pending'
@@ -442,7 +442,7 @@ const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating }: { order: Order;
     <>
       <TableRow className="hover:bg-transparent">
         <TableCell colSpan={7} className="p-0">
-          <div className="px-6 py-4 bg-white border-t">
+          <div className="px-6 py-3 bg-white border-t">
             <div className="max-w-full">
               {/* Header compacto */}
               <div className="flex items-center justify-between mb-4">
@@ -1031,7 +1031,7 @@ export default function OrdersPage() {
             </div>
           ) : (
             <>
-              <Table className="text-sm [&_th]:h-10 [&_th]:py-1 [&_th]:leading-tight [&_td]:py-1.5 [&_td]:align-middle">
+              <Table className="text-sm [&_th]:h-10 [&_th]:py-1 [&_th]:leading-tight [&_td]:align-middle">
                 <TableHeader className="sticky top-0 bg-white z-10 shadow-sm border-b">
                   <TableRow>
                     <TableHead className="w-12 min-w-12 max-w-12 bg-white"></TableHead>

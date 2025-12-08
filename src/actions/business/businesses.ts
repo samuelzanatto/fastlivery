@@ -31,14 +31,10 @@ export interface Business {
   acceptsPickup: boolean
   acceptsDineIn: boolean
   isActive: boolean
-  subscriptionExpiresAt: Date | null
   createdAt: Date
   updatedAt: Date
   ownerId: string | null
   slug: string | null
-  mercadoPagoAccessToken: string | null
-  mercadoPagoConfigured: boolean
-  mercadoPagoPublicKey: string | null
 }
 
 export interface BusinessWithRelations extends Business {
@@ -63,9 +59,6 @@ export interface BusinessUpdateInput {
   acceptsDelivery?: boolean
   acceptsPickup?: boolean
   acceptsDineIn?: boolean
-  mercadoPagoAccessToken?: string
-  mercadoPagoPublicKey?: string
-  mercadoPagoConfigured?: boolean
 }
 
 /**
@@ -156,9 +149,6 @@ async function _updateMyBusiness(
     if (input.acceptsDelivery !== undefined) updateData.acceptsDelivery = input.acceptsDelivery
     if (input.acceptsPickup !== undefined) updateData.acceptsPickup = input.acceptsPickup
     if (input.acceptsDineIn !== undefined) updateData.acceptsDineIn = input.acceptsDineIn
-    if (input.mercadoPagoAccessToken !== undefined) updateData.mercadoPagoAccessToken = input.mercadoPagoAccessToken
-    if (input.mercadoPagoPublicKey !== undefined) updateData.mercadoPagoPublicKey = input.mercadoPagoPublicKey
-    if (input.mercadoPagoConfigured !== undefined) updateData.mercadoPagoConfigured = input.mercadoPagoConfigured
 
     // Atualizar negócio
     const updatedBusiness = await prisma.business.update({
@@ -258,7 +248,6 @@ export async function getBusinessBySlug(slug: string): Promise<ActionResult<unkn
     // Remover dados sensíveis
     const { 
       password: _password, 
-      mercadoPagoAccessToken: _accessToken,
       email: _email,
       ...publicBusinessData
     } = business
@@ -304,135 +293,6 @@ export async function getBusinessStatus(slug: string): Promise<ActionResult<{
     return handleActionError(error)
   }
 }
-
-/**
- * Atualizar configuração do MercadoPago
- */
-async function _updateMercadoPagoConfig(input: {
-  accessToken: string
-  publicKey: string
-}): Promise<ActionResult<{ configured: boolean }>> {
-  try {
-    const user = await getAuthenticatedUser()
-
-    const business = await prisma.business.findFirst({
-      where: {
-        ownerId: user.id
-      }
-    })
-
-    if (!business) {
-      return {
-        success: false,
-        error: 'Negócio não encontrado',
-        code: 'BUSINESS_NOT_FOUND'
-      }
-    }
-
-    await prisma.business.update({
-      where: { id: business.id },
-      data: {
-        mercadoPagoAccessToken: input.accessToken,
-        mercadoPagoPublicKey: input.publicKey,
-        mercadoPagoConfigured: true
-      }
-    })
-
-    revalidatePath('/dashboard/settings')
-
-    return createSuccessResult({ configured: true })
-  } catch (error) {
-    return handleActionError(error)
-  }
-}
-
-export const updateMercadoPagoConfig = withAuth(_updateMercadoPagoConfig)
-
-/**
- * Obter configurações do MercadoPago
- */
-async function _getMercadoPagoConfig(): Promise<ActionResult<{
-  configured: boolean
-  publicKey: string | null
-  businessName: string
-  isTestMode: boolean
-}>> {
-  try {
-    const user = await getAuthenticatedUser()
-
-    const business = await prisma.business.findFirst({
-      where: { ownerId: user.id },
-      select: {
-        id: true,
-        name: true,
-        mercadoPagoConfigured: true,
-        mercadoPagoPublicKey: true,
-        mercadoPagoAccessToken: true,
-      }
-    })
-
-    if (!business) {
-      return {
-        success: false,
-        error: 'Negócio não encontrado',
-        code: 'BUSINESS_NOT_FOUND'
-      }
-    }
-
-    const isTestMode = business.mercadoPagoAccessToken?.startsWith('TEST-') || false
-
-    return createSuccessResult({
-      configured: business.mercadoPagoConfigured,
-      publicKey: business.mercadoPagoPublicKey ? '****' + business.mercadoPagoPublicKey.slice(-4) : null,
-      businessName: business.name,
-      isTestMode
-    })
-  } catch (error) {
-    return handleActionError(error)
-  }
-}
-
-export const getMercadoPagoConfig = withAuth(_getMercadoPagoConfig)
-
-/**
- * Remover configuração do MercadoPago
- */
-async function _removeMercadoPagoConfig(): Promise<ActionResult<{ configured: boolean }>> {
-  try {
-    const user = await getAuthenticatedUser()
-
-    const business = await prisma.business.findFirst({
-      where: {
-        ownerId: user.id
-      }
-    })
-
-    if (!business) {
-      return {
-        success: false,
-        error: 'Negócio não encontrado',
-        code: 'BUSINESS_NOT_FOUND'
-      }
-    }
-
-    await prisma.business.update({
-      where: { id: business.id },
-      data: {
-        mercadoPagoAccessToken: null,
-        mercadoPagoPublicKey: null,
-        mercadoPagoConfigured: false
-      }
-    })
-
-    revalidatePath('/dashboard/settings')
-
-    return createSuccessResult({ configured: false })
-  } catch (error) {
-    return handleActionError(error)
-  }
-}
-
-export const removeMercadoPagoConfig = withAuth(_removeMercadoPagoConfig)
 
 /**
  * Criar novo negócio

@@ -7,7 +7,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PWAHeader } from '@/components/layout/pwa-header'
 import { UserProfile } from '@/components/profile/unified-user-profile'
-import { DynamicPricingSection } from '@/components/checkout/dynamic-pricing-section'
 import { 
   Zap, 
   Smartphone, 
@@ -289,11 +288,32 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <DynamicPricingSection 
-        isExiting={isExiting}
-        onActionClick={handleAccessClick}
-      />
+      {/* CTA Section */}
+      <section id="pricing" className="py-20 bg-gradient-to-br from-orange-500 to-orange-600">
+        <div className="container mx-auto px-4 text-center">
+          <motion.div
+            initial="initial"
+            animate={isExiting ? "exit" : "animate"}
+            variants={fadeInUp}
+            transition={{ duration: 0.8, delay: isExiting ? 0.5 : 0.3 }}
+          >
+            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-6">
+              Comece agora mesmo
+            </h2>
+            <p className="text-xl text-orange-100 mb-8 max-w-2xl mx-auto">
+              Sistema completo para gestão do seu negócio de delivery
+            </p>
+            <Button 
+              onClick={handleAccessClick}
+              size="lg"
+              className="bg-white text-orange-500 hover:bg-orange-50 px-8 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+            >
+              <Zap className="h-5 w-5 mr-2" />
+              {isAuthenticated ? 'Acessar Dashboard' : 'Criar Conta Grátis'}
+            </Button>
+          </motion.div>
+        </div>
+      </section>
 
       {/* Garantia */}
       <section className="py-12">

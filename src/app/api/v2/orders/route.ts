@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
     
-    const result = await createOrder('', data)
+    const result = await createOrder(data)
 
     if (!result.success) {
       return NextResponse.json(

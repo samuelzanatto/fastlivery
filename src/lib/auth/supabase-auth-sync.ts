@@ -1,19 +1,22 @@
 /**
- * Sistema de sincronização entre Better Auth e Supabase Auth
- * Permite que o Supabase Realtime funcione com autenticação Better Auth
+ * Sistema de sincronização entre Better Auth e Supabase
+ * 
+ * NOTA: Como usamos Better Auth para autenticação e Supabase apenas para
+ * Realtime e Database (via Prisma), não precisamos sincronizar sessões
+ * com Supabase Auth. O Realtime funciona com canais públicos/privados
+ * que são autenticados via JWT customizado.
  */
 
-import { supabase } from '@/lib/supabase'
 import { authClient } from './auth-client'
 
 interface SupabaseAuthState {
-  isSyncing: boolean
-  lastSyncAt?: Date
-  error?: string
+  isAuthenticated: boolean
+  userId?: string
+  lastCheckAt?: Date
 }
 
 class SupabaseAuthSync {
-  private state: SupabaseAuthState = { isSyncing: false }
+  private state: SupabaseAuthState = { isAuthenticated: false }
   private sessionCheckInterval?: NodeJS.Timeout
 
   constructor() {
@@ -23,117 +26,60 @@ class SupabaseAuthSync {
   }
 
   private async initializeSync() {
-    // Verificar e sincronizar sessão inicial
-    await this.syncCurrentSession()
+    // Verificar sessão inicial
+    await this.checkSession()
 
-    // Configurar verificação periódica para manter sincronização
+    // Verificação periódica leve (apenas para manter estado local)
     this.sessionCheckInterval = setInterval(() => {
-      this.periodicSync()
-    }, 30000) // Verificar a cada 30 segundos
+      this.checkSession()
+    }, 60000) // Verificar a cada 60 segundos
   }
 
-  private async syncCurrentSession() {
-    if (this.state.isSyncing) return
-
-    this.state.isSyncing = true
-    this.state.error = undefined
-
+  private async checkSession() {
     try {
-      // Obter sessão Better Auth
       const session = await authClient.getSession()
       
-      if (session.data?.user) {
-        // Criar token JWT personalizado para Supabase
-        const customToken = await this.createSupabaseToken()
-        
-        if (customToken) {
-          // Autenticar no Supabase com token personalizado
-          const { error } = await supabase.auth.setSession({
-            access_token: customToken,
-            refresh_token: 'better-auth-managed' // Placeholder
-          })
-
-          if (error) {
-            console.error('[SupabaseAuthSync] Erro ao definir sessão Supabase:', error)
-            this.state.error = error.message
-          } else {
-            console.log('[SupabaseAuthSync] ✅ Sessão sincronizada com Supabase')
-            this.state.lastSyncAt = new Date()
-          }
-        }
-      } else {
-        // Fazer logout no Supabase se não há sessão Better Auth
-        const { data: { session: supabaseSession } } = await supabase.auth.getSession()
-        if (supabaseSession) {
-          await supabase.auth.signOut({ scope: 'local' })
-          console.log('[SupabaseAuthSync] 🚪 Logout sincronizado com Supabase')
-        }
-      }
-    } catch (error) {
-      console.error('[SupabaseAuthSync] Erro na sincronização:', error)
-      this.state.error = error instanceof Error ? error.message : 'Erro desconhecido'
-    } finally {
-      this.state.isSyncing = false
-    }
-  }
-
-  private async createSupabaseToken(): Promise<string | null> {
-    try {
-      // Chamar API para gerar token JWT compatível com Supabase
-      const response = await fetch('/api/auth/supabase-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include' // Incluir cookies da sessão Better Auth
-      })
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          console.log('[SupabaseAuthSync] Não autenticado no Better Auth')
-          return null
-        }
-        throw new Error(`Erro ao gerar token: ${response.status}`)
+      this.state = {
+        isAuthenticated: !!session.data?.user,
+        userId: session.data?.user?.id,
+        lastCheckAt: new Date()
       }
 
-      const { token } = await response.json()
-      return token
-    } catch (error) {
-      console.error('[SupabaseAuthSync] Erro ao criar token:', error)
-      return null
-    }
-  }
-
-  private async periodicSync() {
-    try {
-      const { data: { session: supabaseSession } } = await supabase.auth.getSession()
-      const betterAuthSession = await authClient.getSession()
-
-      // Verificar se as sessões estão desincronizadas
-      const betterAuthActive = !!betterAuthSession.data
-      const supabaseActive = !!supabaseSession
-
-      if (betterAuthActive !== supabaseActive) {
-        console.log('[SupabaseAuthSync] 🔄 Sessões desincronizadas, ressincronizando...')
-        await this.syncCurrentSession()
+      if (process.env.NODE_ENV === 'development' && this.state.isAuthenticated) {
+        console.debug('[SupabaseAuthSync] Sessão Better Auth ativa:', this.state.userId)
       }
     } catch (error) {
-      console.error('[SupabaseAuthSync] Erro na verificação periódica:', error)
+      console.debug('[SupabaseAuthSync] Erro ao verificar sessão:', error)
+      this.state = { isAuthenticated: false }
     }
   }
 
   /**
-   * Força uma nova sincronização
+   * Força uma nova verificação de sessão
    */
   async forceSync(): Promise<void> {
-    await this.syncCurrentSession()
+    await this.checkSession()
   }
 
   /**
-   * Obtém o estado atual da sincronização
+   * Obtém o estado atual
    */
   getState(): SupabaseAuthState {
     return { ...this.state }
+  }
+
+  /**
+   * Verifica se o usuário está autenticado
+   */
+  isAuthenticated(): boolean {
+    return this.state.isAuthenticated
+  }
+
+  /**
+   * Obtém o ID do usuário atual
+   */
+  getUserId(): string | undefined {
+    return this.state.userId
   }
 
   /**

@@ -1,50 +1,40 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 
 model User {
-  id               String            @id @default(cuid())
-  name             String
-  email            String            @unique
-  emailVerified    Boolean           @default(false)
-  image            String?
-  phone            String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  stripeCustomerId String?
-  isActive         Boolean           @default(false)
-  banExpires       DateTime?
-  banReason        String?
-  banned           Boolean?          @default(false)
-  customerMetadata String?
-  businessId     String?
-  role             String?
-  accounts         Account[]
-  addresses        Address[]
-  conversations    Conversation[]    @relation("CustomerConversations")
-  createdEmployees EmployeeProfile[] @relation("CreatedByUser")
-  employeeProfiles EmployeeProfile[]
-  invitations      Invitation[]
-  members          Member[]
-  orders           Order[]
-  ownedBusinesses Business[]      @relation("BusinessOwner")
-  sessions         Session[]
-
-  // Novos relacionamentos B2B
-  ownedCompanies       Company[]             @relation("CompanyOwner")
-  createdPartnerships  Partnership[]         
-  partnershipRequests  PartnershipRequest[]  
-  partnershipResponses PartnershipRequest[]  @relation("PartnershipRequestResponses")
-  supplierReviews      SupplierReview[]      
-  marketplaceFavorites MarketplaceFavorite[] 
-  marketplaceActivities MarketplaceActivity[]
-  passwordResetTokens  PasswordResetToken[]
+  id                  String               @id @default(cuid())
+  name                String
+  email               String               @unique
+  emailVerified       Boolean              @default(false)
+  image               String?
+  phone               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  isActive            Boolean              @default(false)
+  banExpires          DateTime?
+  banReason           String?
+  banned              Boolean?             @default(false)
+  customerMetadata    String?
+  role                String?
+  businessId          String?
+  accounts            Account[]
+  addresses           Address[]
+  ownedBusinesses     Business[]           @relation("BusinessOwner")
+  conversations       Conversation[]       @relation("CustomerConversations")
+  createdEmployees    EmployeeProfile[]    @relation("CreatedByUser")
+  employeeProfiles    EmployeeProfile[]
+  invitations         Invitation[]
+  members             Member[]
+  orders              Order[]
+  passwordResetTokens PasswordResetToken[]
+  push_subscriptions  PushSubscription[]
+  sessions            Session[]
 
   @@map("users")
 }
@@ -85,17 +75,15 @@ model Account {
   @@map("accounts")
 }
 
-// Tokens de redefinição de senha
 model PasswordResetToken {
-  id         String   @id @default(cuid())
-  userId     String
-  tokenHash  String   @unique
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -121,85 +109,81 @@ model Address {
 }
 
 model Business {
-  id                     String                 @id @default(cuid())
-  email                  String                 @unique
-  password               String
-  name                   String
-  description            String?
-  phone                  String
-  address                String
-  avatar                 String?
-  banner                 String?
-  isOpen                 Boolean                @default(true)
-  openingHours           String?
-  deliveryFee            Float                  @default(0)
-  minimumOrder           Float                  @default(0)
-  deliveryTime           Int                    @default(30)
-  acceptsDelivery        Boolean                @default(true)
-  acceptsPickup          Boolean                @default(true)
-  acceptsDineIn          Boolean                @default(true)
-  isActive               Boolean                @default(false)
-  subscriptionExpiresAt  DateTime?
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
-  ownerId                String?
-  slug                   String?
-  mercadoPagoAccessToken String?
-  mercadoPagoConfigured  Boolean                @default(false)
-  mercadoPagoPublicKey   String?
-  mercadoPagoRefreshToken String?
-  mercadoPagoExpiresAt    DateTime?
-  categories             Category[]
-  conversations          Conversation[]         @relation("BusinessConversations")
-  employeeProfiles       EmployeeProfile[]
-  orders                 Order[]
-  payments               Payment[]
-  products               Product[]
-  promotions             Promotion[]
-  additionals            BusinessAdditional[]
-  owner                  User?                  @relation("BusinessOwner", fields: [ownerId], references: [id])
-  roles                  Role[]
-  subscription           Subscription?
-  tables                 Table[]
+  id                    String               @id @default(cuid())
+  email                 String               @unique
+  password              String
+  name                  String
+  description           String?
+  phone                 String
+  address               String
+  avatar                String?
+  banner                String?
+  isOpen                Boolean              @default(true)
+  openingHours          String?
+  deliveryFee           Float                @default(0)
+  minimumOrder          Float                @default(0)
+  deliveryTime          Int                  @default(30)
+  acceptsDelivery       Boolean              @default(true)
+  acceptsPickup         Boolean              @default(true)
+  acceptsDineIn         Boolean              @default(true)
+  isActive              Boolean              @default(false)
+  subscriptionExpiresAt DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  ownerId               String?
+  slug                  String?
+  additionals           BusinessAdditional[]
+  owner                 User?                @relation("BusinessOwner", fields: [ownerId], references: [id])
+  categories            Category[]
+  conversations         Conversation[]       @relation("BusinessConversations")
+  employeeProfiles      EmployeeProfile[]
+  orders                Order[]
+  payments              Payment[]
+  products              Product[]
+  promotions            Promotion[]
+  pushSubscriptions     PushSubscription[]
+  roles                 Role[]
+  subscription          Subscription?
+  tables                Table[]
 
   @@map("businesses")
 }
 
 model Category {
-  id           String     @id @default(cuid())
-  businessId   String
-  name         String
-  description  String?
-  isActive     Boolean    @default(true)
-  order        Int        @default(0)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  parentId     String?
-  parent       Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  id            String     @id @default(cuid())
+  name          String
+  description   String?
+  isActive      Boolean    @default(true)
+  order         Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  parentId      String?
+  businessId    String
+  business      Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent        Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   subcategories Category[] @relation("CategoryHierarchy")
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  products     Product[]
+  products      Product[]
 
   @@unique([businessId, name])
   @@map("categories")
 }
 
 model Product {
-  id           String              @id @default(cuid())
-  businessId   String
-  categoryId   String
-  name         String
-  description  String?
-  price        Float
-  image        String?
-  isAvailable  Boolean             @default(true)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  orderItems   OrderItem[]
-  additionals  ProductAdditional[]
-  options      ProductOption[]
-  category     Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id          String              @id @default(cuid())
+  categoryId  String
+  name        String
+  description String?
+  price       Float
+  image       String?
+  isAvailable Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  businessId  String
+  orderItems  OrderItem[]
+  additionals ProductAdditional[]
+  options     ProductOption[]
+  business    Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category    Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([businessId, name])
   @@map("products")
@@ -234,91 +218,90 @@ model ProductOptionItem {
 }
 
 model BusinessAdditional {
-  id           String                     @id @default(cuid())
-  businessId   String
-  name         String
-  description  String?
-  price        Float                      @default(0)
-  isRequired   Boolean                    @default(false)
-  maxOptions   Int                        @default(1)
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
-  products     ProductAdditional[]
-  items        BusinessAdditionalItem[]
-  business     Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id          String                   @id @default(cuid())
+  businessId  String
+  name        String
+  description String?
+  price       Float                    @default(0)
+  isRequired  Boolean                  @default(false)
+  maxOptions  Int                      @default(1)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  items       BusinessAdditionalItem[]
+  business    Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products    ProductAdditional[]
 
   @@map("business_additionals")
 }
 
 model BusinessAdditionalItem {
-  id           String               @id @default(cuid())
+  id           String             @id @default(cuid())
   additionalId String
   name         String
-  price        Float                @default(0)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  price        Float              @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   additional   BusinessAdditional @relation(fields: [additionalId], references: [id], onDelete: Cascade)
 
   @@map("business_additional_items")
 }
 
 model ProductAdditional {
-  id           String               @id @default(cuid())
+  id           String             @id @default(cuid())
   productId    String
   additionalId String
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   additional   BusinessAdditional @relation(fields: [additionalId], references: [id], onDelete: Cascade)
-  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, additionalId])
   @@map("product_additionals")
 }
 
 model Table {
-  id           String     @id @default(cuid())
-  businessId   String
-  number       String
-  qrCode       String     @unique
-  isOccupied   Boolean    @default(false)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  isReserved   Boolean    @default(false)
-  orders       Order[]
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  number     String
+  qrCode     String   @unique
+  isOccupied Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  isReserved Boolean  @default(false)
+  businessId String
+  orders     Order[]
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@map("tables")
 }
 
 model Order {
-  id              String         @id @default(cuid())
+  id              String                @id @default(cuid())
   userId          String?
-  businessId      String
   tableId         String?
-  orderNumber     String         @unique
+  orderNumber     String                @unique
   type            OrderType
-  status          OrderStatus    @default(PENDING)
+  status          OrderStatus           @default(PENDING)
   subtotal        Float
-  deliveryFee     Float          @default(0)
-  discount        Float          @default(0)
+  deliveryFee     Float                 @default(0)
+  discount        Float                 @default(0)
   total           Float
   deliveryAddress String?
   customerName    String
   customerPhone   String
   customerEmail   String?
   paymentMethod   PaymentMethod?
-  paymentStatus   PaymentStatus  @default(PENDING)
+  paymentStatus   PaymentStatus         @default(PENDING)
   notes           String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  stripeSessionId String?
-  items           OrderItem[]
-  business        Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  table           Table?         @relation(fields: [tableId], references: [id])
-  user            User?          @relation(fields: [userId], references: [id])
-  payments        Payment[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  businessId      String
   eventIngestions OrderEventIngestion[]
   history         OrderHistory[]
+  items           OrderItem[]
+  business        Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  table           Table?                @relation(fields: [tableId], references: [id])
+  user            User?                 @relation(fields: [userId], references: [id])
+  payments        Payment[]
 
   @@map("orders")
 }
@@ -340,23 +323,23 @@ model OrderItem {
 }
 
 model Promotion {
-  id           String        @id @default(cuid())
-  businessId   String
-  name         String
-  description  String?
-  type         PromotionType
-  value        Float
-  minOrder     Float?
-  maxDiscount  Float?
-  code         String?
-  validFrom    DateTime
-  validTo      DateTime
-  isActive     Boolean       @default(true)
-  usageLimit   Int?
-  usageCount   Int           @default(0)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  business     Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  type        PromotionType
+  value       Float
+  minOrder    Float?
+  maxDiscount Float?
+  code        String?
+  validFrom   DateTime
+  validTo     DateTime
+  isActive    Boolean       @default(true)
+  usageLimit  Int?
+  usageCount  Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  businessId  String
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@map("promotions")
 }
@@ -368,19 +351,17 @@ model Payment {
   status            PaymentStatus @default(PENDING)
   amount            Float
   type              String
-  businessId        String
   orderId           String?
   metadata          Json?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
-  stripePaymentId   String?
-  stripeSessionId   String?
+  businessId        String
+  business          Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   order             Order?        @relation(fields: [orderId], references: [id])
-  business          Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
-  @@map("payments")
   @@index([externalReference])
   @@index([orderId])
+  @@map("payments")
 }
 
 model WebhookEvent {
@@ -400,10 +381,6 @@ model WebhookEvent {
 
 model Subscription {
   id                   String             @id @default(cuid())
-  businessId           String             @unique
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  stripePriceId        String
   planId               String
   status               SubscriptionStatus @default(ACTIVE)
   currentPeriodStart   DateTime
@@ -427,7 +404,8 @@ model Subscription {
   seats                Int?
   trialEnd             DateTime?
   trialStart           DateTime?
-  business             Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId           String             @unique
+  business             Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
   usage                UsageStats[]
 
   @@map("subscriptions")
@@ -482,46 +460,17 @@ model Image {
   @@map("images")
 }
 
-model StripeProduct {
-  id          String        @id
+model Role {
+  id          String            @id @default(cuid())
   name        String
   description String?
-  active      Boolean       @default(true)
-  metadata    Json          @default("{}")
-  created     DateTime
-  updated     DateTime      @updatedAt
-  prices      StripePrice[]
-
-  @@map("stripe_products")
-}
-
-model StripePrice {
-  id         String        @id
-  productId  String
-  active     Boolean       @default(true)
-  currency   String
-  unitAmount Int?
-  recurring  Json?
-  type       String
-  metadata   Json          @default("{}")
-  created    DateTime
-  updated    DateTime      @updatedAt
-  product    StripeProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@map("stripe_prices")
-}
-
-model Role {
-  id           String            @id @default(cuid())
-  businessId   String
-  name         String
-  description  String?
-  isActive     Boolean           @default(true)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  employees    EmployeeProfile[]
-  permissions  Permission[]
-  business     Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  businessId  String
+  employees   EmployeeProfile[]
+  permissions Permission[]
+  business    Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@unique([businessId, name])
   @@map("roles")
@@ -542,22 +491,22 @@ model Permission {
 }
 
 model EmployeeProfile {
-  id           String     @id @default(cuid())
-  userId       String
-  businessId   String
-  roleId       String
-  isActive     Boolean    @default(true)
-  startDate    DateTime   @default(now())
-  endDate      DateTime?
-  salary       Float?
-  notes        String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  createdById  String
-  createdBy    User       @relation("CreatedByUser", fields: [createdById], references: [id])
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  role         Role       @relation(fields: [roleId], references: [id])
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  userId      String
+  roleId      String
+  isActive    Boolean   @default(true)
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  salary      Float?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("CreatedByUser", fields: [createdById], references: [id])
+  role        Role      @relation(fields: [roleId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, businessId])
   @@map("employee_profiles")
@@ -626,14 +575,14 @@ model Invitation {
 }
 
 model Conversation {
-  id           String        @id @default(cuid())
-  customerId   String
-  businessId   String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  messages     ChatMessage[]
-  customer     User          @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
-  business     Business    @relation("BusinessConversations", fields: [businessId], references: [id], onDelete: Cascade)
+  id         String        @id @default(cuid())
+  customerId String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  businessId String
+  messages   ChatMessage[]
+  business   Business      @relation("BusinessConversations", fields: [businessId], references: [id], onDelete: Cascade)
+  customer   User          @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
 
   @@unique([customerId, businessId])
   @@map("conversations")
@@ -653,27 +602,21 @@ model ChatMessage {
   @@map("chat_messages")
 }
 
-// =============================================
-// Internal Order Event Sourcing / Ingestion
-// =============================================
-
 /// Raw ingestion of order-related events coming from any internal source (polling, adapters, etc.).
 /// Acts as an idempotency layer (unique eventId) and staging for processing pipeline.
 model OrderEventIngestion {
-  id             String    @id @default(cuid())
-  eventId        String    // provider or internal unique identifier for the event
-  orderNumber    String?   // used to link to Order via orderNumber when internal id not known yet
-  orderId        String?   // direct relation once resolved
-  type           String    // e.g. ORDER_CREATED, ORDER_UPDATED, STATUS_CHANGED
-  payload        Json      // raw payload for replay/debug
-  processedAt    DateTime? // null until successfully applied to domain state
-  attempts       Int       @default(0)
-  createdAt      DateTime  @default(now())
-
-  order          Order?    @relation(fields: [orderId], references: [id])
+  id             String         @id @default(cuid())
+  eventId        String         @unique
+  orderNumber    String?
+  orderId        String?
+  type           String
+  payload        Json
+  processedAt    DateTime?
+  attempts       Int            @default(0)
+  createdAt      DateTime       @default(now())
+  order          Order?         @relation(fields: [orderId], references: [id])
   historyEntries OrderHistory[]
 
-  @@unique([eventId])
   @@index([orderId])
   @@index([orderNumber])
   @@map("order_event_ingestion")
@@ -682,23 +625,43 @@ model OrderEventIngestion {
 /// Historical timeline of state transitions applied to an Order after normalization.
 /// Facilitates audit, debugging and replay of order lifecycle.
 model OrderHistory {
-  id                String      @id @default(cuid())
-  orderId           String
-  eventIngestionId  String?     // optional link back to raw ingestion row
-  fromStatus        OrderStatus?
-  toStatus          OrderStatus?
-  transitionType    String      // semantic label, e.g. CREATED, CONFIRMED, CANCELLED
-  reason            String?     // optional reason / metadata (e.g. cancellation cause)
-  metadata          Json?       // extended structured data (diffs, timing, etc.)
-  occurredAt        DateTime    @default(now())
-  createdAt         DateTime    @default(now())
-
-  order             Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  ingestion         OrderEventIngestion? @relation(fields: [eventIngestionId], references: [id])
+  id               String               @id @default(cuid())
+  orderId          String
+  eventIngestionId String?
+  fromStatus       OrderStatus?
+  toStatus         OrderStatus?
+  transitionType   String
+  reason           String?
+  metadata         Json?
+  occurredAt       DateTime             @default(now())
+  createdAt        DateTime             @default(now())
+  ingestion        OrderEventIngestion? @relation(fields: [eventIngestionId], references: [id])
+  order            Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([eventIngestionId])
   @@map("order_history")
+}
+
+/// Armazena subscriptions de Push Notifications (Web Push API)
+model PushSubscription {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  businessId String
+  endpoint   String
+  p256dh     String
+  auth       String
+  userId     String?
+  userAgent  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+  lastUsedAt DateTime? @db.Timestamptz(6)
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@unique([businessId, endpoint], name: "unique_endpoint_per_business", map: "unique_endpoint_per_business")
+  @@index([businessId], map: "idx_push_subscriptions_business")
+  @@index([userId], map: "idx_push_subscriptions_user")
+  @@map("push_subscriptions")
 }
 
 enum OrderType {
@@ -746,667 +709,7 @@ enum SubscriptionStatus {
   TRIALING
 }
 
-
 enum SenderType {
   CUSTOMER
   BUSINESS
-}
-
-// ======================================
-// B2B MARKETPLACE ENUMS
-// ======================================
-
-enum CompanyType {
-  BUSINESS  // Empresas de delivery
-  SUPPLIER          // Fornecedores do marketplace B2B
-}
-
-enum StripeConnectStatus {
-  NOT_CONNECTED     // Ainda não iniciou o processo
-  PENDING           // Onboarding iniciado mas não completo
-  CONNECTED         // Conta conectada com sucesso
-  RESTRICTED        // Conta com restrições
-  REJECTED          // Rejeitada pelo Stripe
-}
-
-enum SupplierCategory {
-  FOOD_INGREDIENTS  // Ingredientes alimentícios
-  PACKAGING        // Embalagens
-  EQUIPMENT        // Equipamentos
-  SERVICES         // Serviços diversos
-  MARKETING        // Marketing e publicidade
-  LOGISTICS        // Logística e transporte
-  TECHNOLOGY       // Tecnologia e software
-  CONSULTING       // Consultoria
-  OTHER           // Outros
-}
-
-enum PartnershipStatus {
-  PENDING         // Pendente aprovação
-  ACTIVE          // Parceria ativa
-  SUSPENDED       // Temporariamente suspensa
-  TERMINATED      // Encerrada
-}
-
-enum PartnershipRequestStatus {
-  PENDING         // Aguardando resposta
-  APPROVED        // Aprovada (vira Partnership)
-  REJECTED        // Rejeitada
-  CANCELLED       // Cancelada pelo solicitante
-}
-
-// ======================================
-// B2B MARKETPLACE MODELS
-// ======================================
-
-// Company model
-// Suporta tanto empresas de delivery quanto fornecedores
-model Company {
-  id                     String                 @id @default(cuid())
-  type                   CompanyType            @default(BUSINESS)
-  email                  String                 @unique
-  password               String
-  name                   String
-  slug                   String?                @unique
-  description            String?
-  phone                  String?
-  address                String?
-  city                   String?
-  state                  String?
-  country                String?                @default("BR")
-  zipCode                String?
-  website                String?
-  logo                   String?                // antes era "avatar"
-  banner                 String?
-  isActive               Boolean                @default(false)
-  isVerified             Boolean                @default(false)
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
-  ownerId                String?
-
-  // Campos específicos para empresas de delivery (compatibilidade)
-  isOpen                 Boolean?               @default(true)
-  openingHours           String?
-  deliveryFee            Float?                 @default(0)
-  minimumOrder           Float?                 @default(0)
-  deliveryTime           Int?                   @default(30)
-  acceptsDelivery        Boolean?               @default(true)
-  acceptsPickup          Boolean?               @default(true)
-  acceptsDineIn          Boolean?               @default(true)
-  subscriptionExpiresAt  DateTime?
-  mercadoPagoAccessToken String?
-  mercadoPagoConfigured  Boolean?               @default(false)
-  mercadoPagoPublicKey   String?
-
-  // Stripe Connect fields
-  stripeConnectAccountId    String?                // ID da conta conectada no Stripe
-  stripeConnectStatus       StripeConnectStatus?   @default(NOT_CONNECTED)
-  stripeConnectOnboardedAt  DateTime?              // Data quando completou o onboarding
-  stripeConnectChargesEnabled Boolean?             @default(false)
-  stripeConnectPayoutsEnabled Boolean?             @default(false)
-  platformCommissionRate    Float?                 @default(5.0) // % de comissão da plataforma
-
-  // Relacionamentos
-  owner                  User?                  @relation("CompanyOwner", fields: [ownerId], references: [id])
-  supplier               Supplier?              // Uma company pode ser um supplier
-  
-  // Novos relacionamentos B2B
-  partnershipRequests    PartnershipRequest[]   @relation("CompanyPartnershipRequests")
-  partnerships           Partnership[]          @relation("CompanyPartnerships")
-  supplierReviews        SupplierReview[]       @relation("CompanySupplierReviews")
-  marketplaceFavorites   MarketplaceFavorite[]  @relation("CompanyFavorites")
-  marketplaceActivities  MarketplaceActivity[]  @relation("CompanyActivities")
-  whatsappConfig         WhatsappConfig?
-  whatsappMessages       WhatsappMessage[]
-  whatsappCartItems      WhatsappCartItem[]
-  whatsappOrders         WhatsappOrder[]
-  supplierServiceCategories SupplierServiceCategory[]
-
-  @@map("companies")
-}
-
-// Supplier model - Fornecedores no marketplace B2B
-model Supplier {
-  id                   String             @id @default(cuid())
-  companyId            String             @unique
-  category             SupplierCategory
-  subCategory          String?
-  businessModel        String?            // B2B, B2C, Both
-  yearsInBusiness      Int?
-  employeeCount        String?            // "1-10", "11-50", "51-200", "200+"
-  certifications       Json               @default("[]")
-  serviceAreas         Json               @default("[]") // ["SP", "RJ", "MG"] ou ["Nacional"]
-  minOrderValue        Float?
-  maxOrderValue        Float?
-  paymentTerms         String?
-  deliveryMethods      Json               @default("[]")
-  averageDeliveryTime  Int?               // em dias
-  responseTime         Int                @default(24) // horas para responder
-  isActive             Boolean            @default(true)
-  isFeatured           Boolean            @default(false)
-  rating               Float              @default(0)
-  totalReviews         Int                @default(0)
-  totalOrders          Int                @default(0)
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-
-  // Stripe Connect fields (herda da Company)
-  stripeConnectAccountId    String?        @unique  // ID da conta conectada no Stripe
-
-  // Relacionamentos
-  company              Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  services             SupplierService[]
-  partnershipRequests  PartnershipRequest[] @relation("SupplierPartnershipRequests")
-  partnerships         Partnership[]      @relation("SupplierPartnerships")
-  reviews              SupplierReview[]   @relation("SupplierReviews")
-  favorites            MarketplaceFavorite[] @relation("SupplierFavorites")
-  activities           MarketplaceActivity[] @relation("SupplierActivities")
-  
-  // Stripe Connect relationships
-  stripeTransactions   StripeConnectTransaction[]
-  stripeTransfers      StripeConnectTransfer[]
-  
-  // Subscription relationship
-  subscription         SupplierSubscription?
-  clients              SupplierClient[]
-  whatsappOrderSuppliers WhatsappOrderSupplier[]
-
-  @@map("suppliers")
-}
-
-// SupplierService model - Produtos/serviços oferecidos
-model SupplierService {
-  id           String   @id @default(cuid())
-  supplierId   String
-  name         String
-  description  String?
-  category     String
-  subCategory  String?
-  unitType     String   // "kg", "unidade", "litro", "hora", "projeto"
-  minQuantity  Float?
-  maxQuantity  Float?
-  pricePerUnit Float?
-  priceType    String   @default("fixed") // "fixed", "negotiable", "quote"
-  images       Json     @default("[]")
-  specifications Json   @default("{}")
-  isActive     Boolean  @default(true)
-  // ================= ESTOQUE =================
-  trackStock        Boolean  @default(true)    // Se false ignora reservas/controle
-  stockQuantity     Int       @default(0)       // Quantidade física disponível
-  reservedQuantity  Int       @default(0)       // Quantidade reservada (carrinhos / pedidos pendentes)
-  lowStockThreshold Int       @default(0)       // Limite para alerta de baixo estoque
-  allowBackorder    Boolean   @default(false)   // Permitir vender mesmo sem estoque disponível
-  // Calculado em runtime: available = stockQuantity - reservedQuantity
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relacionamentos
-  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  categoryRef  SupplierServiceCategory? @relation(fields: [categoryId], references: [id])
-  categoryId   String?
-  whatsappCartItems WhatsappCartItem[]
-  stockMovements    SupplierServiceStockMovement[]
-
-  @@map("supplier_services")
-}
-
-// SupplierServiceCategory model - Categorias de produtos/serviços dos fornecedores
-model SupplierServiceCategory {
-  id           String   @id @default(cuid())
-  companyId    String
-  name         String
-  description  String?
-  parentId     String?
-  order        Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relacionamentos
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parent       SupplierServiceCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  subcategories SupplierServiceCategory[] @relation("CategoryHierarchy")
-  services     SupplierService[]
-
-  @@index([companyId, order])
-  @@map("supplier_service_categories")
-}
-
-// Movimentações de estoque de SupplierService
-model SupplierServiceStockMovement {
-  id            String   @id @default(cuid())
-  serviceId     String
-  type          StockMovementType
-  quantity      Int        // Quantidade movimentada (positiva para entrada/reserva, negativa para consumo/liberação)
-  stockBefore   Int        // Quantidade física antes (stockQuantity)
-  stockAfter    Int        // Quantidade física depois
-  reservedBefore Int       // Quantidade reservada antes
-  reservedAfter  Int       // Quantidade reservada depois
-  reason        String?    // Texto livre / contexto
-  reference     String?    // ex: phone do cliente, orderId, ajuste manual
-  metadata      Json       @default("{}")
-  createdAt     DateTime   @default(now())
-
-  service       SupplierService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-
-  @@index([serviceId, createdAt])
-  @@map("supplier_service_stock_movements")
-}
-
-enum StockMovementType {
-  ADJUSTMENT     // Ajuste manual (entrada ou saída)
-  RESERVATION    // Reserva (adicionar ao carrinho)
-  RELEASE        // Liberação (remover do carrinho)
-  CONSUMPTION    // Consumo efetivo (finalização de pedido)
-  CANCELLATION   // Cancelamento de pedido (retorna ao estoque)
-  CORRECTION     // Correção sistêmica
-}
-
-// Partnership model - Relacionamento empresa-fornecedor
-model Partnership {
-  id             String            @id @default(cuid())
-  companyId      String
-  supplierId     String
-  status         PartnershipStatus @default(PENDING)
-  startDate      DateTime?
-  endDate        DateTime?
-  renewalDate    DateTime?
-  contractTerms  Json              @default("{}")
-  paymentTerms   String?
-  discount       Float             @default(0)
-  minimumOrder   Float?
-  isAutoRenewal  Boolean           @default(false)
-  notes          String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  createdById    String
-
-  // Relacionamentos
-  company        Company           @relation("CompanyPartnerships", fields: [companyId], references: [id], onDelete: Cascade)
-  supplier       Supplier          @relation("SupplierPartnerships", fields: [supplierId], references: [id], onDelete: Cascade)
-  createdBy      User              @relation(fields: [createdById], references: [id])
-  reviews        SupplierReview[]  @relation("PartnershipReviews")
-
-  @@unique([companyId, supplierId])
-  @@map("partnerships")
-}
-
-// PartnershipRequest model - Solicitações de parceria
-model PartnershipRequest {
-  id             String                   @id @default(cuid())
-  companyId      String
-  supplierId     String
-  requesterId    String
-  status         PartnershipRequestStatus @default(PENDING)
-  message        String?
-  response       String?
-  serviceIds     Json                     @default("[]")
-  expectedVolume String?
-  budget         Float?
-  timeline       String?
-  respondedAt    DateTime?
-  respondedById  String?
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
-
-  // Relacionamentos
-  company        Company                  @relation("CompanyPartnershipRequests", fields: [companyId], references: [id], onDelete: Cascade)
-  supplier       Supplier                 @relation("SupplierPartnershipRequests", fields: [supplierId], references: [id], onDelete: Cascade)
-  requester      User                     @relation(fields: [requesterId], references: [id])
-  respondedBy    User?                    @relation("PartnershipRequestResponses", fields: [respondedById], references: [id])
-
-  @@map("partnership_requests")
-}
-
-// SupplierReview model - Avaliações dos fornecedores
-model SupplierReview {
-  id           String      @id @default(cuid())
-  supplierId   String
-  companyId    String
-  userId       String
-  partnershipId String?
-  rating       Int         // 1 a 5
-  title        String?
-  comment      String?
-  aspects      Json        @default("{}") // {"quality": 5, "delivery": 4, "support": 5}
-  isVerified   Boolean     @default(false)
-  isAnonymous  Boolean     @default(false)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  // Relacionamentos
-  supplier     Supplier    @relation("SupplierReviews", fields: [supplierId], references: [id], onDelete: Cascade)
-  company      Company     @relation("CompanySupplierReviews", fields: [companyId], references: [id], onDelete: Cascade)
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  partnership  Partnership? @relation("PartnershipReviews", fields: [partnershipId], references: [id])
-
-  @@unique([supplierId, companyId])
-  @@map("supplier_reviews")
-}
-
-// =============================================================
-// SupplierClient - Clientes diretos do fornecedor (B2C interno)
-// Usado para a funcionalidade de "Clientes" dentro do dashboard do fornecedor
-// Não confundir com Partnership que é B2B entre empresas
-// =============================================================
-model SupplierClient {
-  id              String    @id @default(cuid())
-  supplierId      String
-  supplier        Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  name            String
-  phone           String
-  email           String?
-  company         String?
-  whatsappEnabled Boolean   @default(true)
-  notes           Json?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  // Telefone passa a ser tratado como identificador global único
-  // (Se for necessário permitir o mesmo número em múltiplos suppliers, remover a linha abaixo)
-  @@unique([phone])
-  @@unique([supplierId, phone])
-  @@map("supplier_clients")
-}
-
-// MarketplaceFavorite model - Favoritos das empresas
-model MarketplaceFavorite {
-  id         String   @id @default(cuid())
-  companyId  String
-  supplierId String
-  userId     String
-  createdAt  DateTime @default(now())
-
-  // Relacionamentos
-  company    Company  @relation("CompanyFavorites", fields: [companyId], references: [id], onDelete: Cascade)
-  supplier   Supplier @relation("SupplierFavorites", fields: [supplierId], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([companyId, supplierId])
-  @@map("marketplace_favorites")
-}
-
-// MarketplaceActivity model - Analytics do marketplace
-model MarketplaceActivity {
-  id         String   @id @default(cuid())
-  type       String   // "view", "contact", "favorite", "request_partnership"
-  userId     String
-  companyId  String?
-  supplierId String?
-  metadata   Json     @default("{}")
-  createdAt  DateTime @default(now())
-
-  // Relacionamentos
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company    Company?  @relation("CompanyActivities", fields: [companyId], references: [id])
-  supplier   Supplier? @relation("SupplierActivities", fields: [supplierId], references: [id])
-
-  @@map("marketplace_activities")
-}
-
-// =================== STRIPE CONNECT MODELS ===================
-
-model StripeConnectTransaction {
-  id                        String                        @id @default(cuid())
-  stripeTransactionId       String                        @unique  // ID da transação no Stripe
-  connectedAccountId        String                        // ID da conta conectada (supplier)
-  platformStripeAccountId   String?                       // ID da conta da plataforma
-  type                      StripeTransactionType
-  status                    StripeTransactionStatus
-  amount                    Int                           // Valor em centavos
-  currency                  String                        @default("brl")
-  platformCommission        Int                           // Comissão da plataforma em centavos
-  supplierAmount            Int                           // Valor para o fornecedor em centavos
-  description               String?
-  metadata                  Json                          @default("{}")
-  stripeCreatedAt           DateTime                      // Data da transação no Stripe
-  createdAt                 DateTime                      @default(now())
-  updatedAt                 DateTime                      @updatedAt
-  
-  // Relacionamentos
-  supplier                  Supplier                      @relation(fields: [connectedAccountId], references: [stripeConnectAccountId])
-  transfers                 StripeConnectTransfer[]
-
-  @@map("stripe_connect_transactions")
-}
-
-model StripeConnectTransfer {
-  id                      String                        @id @default(cuid())
-  stripeTransferId        String                        @unique   // ID da transferência no Stripe
-  transactionId           String                        // Referência à transação
-  connectedAccountId      String                        // Conta de destino
-  amount                  Int                           // Valor transferido em centavos
-  currency                String                        @default("brl")
-  status                  StripeTransferStatus
-  description             String?
-  stripeCreatedAt         DateTime                      // Data da transferência no Stripe
-  createdAt               DateTime                      @default(now())
-  updatedAt               DateTime                      @updatedAt
-  
-  // Relacionamentos
-  transaction             StripeConnectTransaction      @relation(fields: [transactionId], references: [id])
-  supplier                Supplier                      @relation(fields: [connectedAccountId], references: [stripeConnectAccountId])
-
-  @@map("stripe_connect_transfers")
-}
-
-// Enums para Stripe Connect
-enum StripeTransactionType {
-  PAYMENT           // Pagamento recebido
-  REFUND           // Reembolso
-  ADJUSTMENT       // Ajuste
-  PAYOUT           // Pagamento para conta bancária
-}
-
-enum StripeTransactionStatus {
-  PENDING
-  SUCCEEDED
-  FAILED
-  CANCELED
-}
-
-enum StripeTransferStatus {
-  PENDING
-  PAID
-  FAILED
-  CANCELED
-  IN_TRANSIT
-}
-
-// Subscription Plan Enums
-enum SupplierPlanType {
-  STARTER       // R$ 49/mês
-  GROWTH        // R$ 149/mês  
-  PROFESSIONAL  // R$ 299/mês
-  ENTERPRISE    // R$ 999/mês
-}
-
-enum SupplierSubscriptionStatus {
-  ACTIVE
-  INACTIVE
-  CANCELLED
-  PAST_DUE
-  TRIALING
-}
-
-// Supplier Subscription Plans
-model SupplierSubscriptionPlan {
-  id                    String              @id @default(cuid())
-  planType              SupplierPlanType
-  name                  String              
-  description           String?
-  monthlyPrice          Int                 // Preço em centavos
-  stripeProductId       String              @unique
-  stripePriceId         String              @unique
-  
-  // Limites do plano
-  maxProducts           Int?                // null = ilimitado
-  maxPartnerships       Int?                // null = ilimitado
-  commissionRate        Float               // Taxa de comissão (0.05 = 5%)
-  
-  // Recursos incluídos
-  prioritySupport       Boolean             @default(false)
-  advancedAnalytics     Boolean             @default(false)
-  apiAccess             Boolean             @default(false)
-  whiteLabel            Boolean             @default(false)
-  dedicatedManager      Boolean             @default(false)
-  customReports         Boolean             @default(false)
-  slaGuarantee          Boolean             @default(false)
-  
-  isActive              Boolean             @default(true)
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  
-  // Relacionamentos
-  subscriptions         SupplierSubscription[]
-
-  @@map("supplier_subscription_plans")
-}
-
-// Active subscriptions for suppliers
-model SupplierSubscription {
-  id                    String                      @id @default(cuid())
-  supplierId            String                      @unique
-  planId                String
-  stripeSubscriptionId  String                      @unique
-  status                SupplierSubscriptionStatus
-  currentPeriodStart    DateTime
-  currentPeriodEnd      DateTime
-  cancelAtPeriodEnd     Boolean                     @default(false)
-  canceledAt            DateTime?
-  trialEnd              DateTime?
-  
-  // Usage tracking
-  currentProductCount   Int                         @default(0)
-  currentPartnershipCount Int                       @default(0)
-  
-  createdAt             DateTime                    @default(now())
-  updatedAt             DateTime                    @updatedAt
-  
-  // Relacionamentos
-  supplier              Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  plan                  SupplierSubscriptionPlan    @relation(fields: [planId], references: [id])
-
-  @@map("supplier_subscriptions")
-}
-
-// WhatsApp Configuration for Companies/Suppliers
-model WhatsappConfig {
-  id              String               @id @default(cuid())
-  companyId       String               @unique
-  instanceName    String               @unique
-  instanceId      String
-  status          WhatsappStatus       @default(DISCONNECTED)
-  enabled         Boolean              @default(false)
-  webhookUrl      String?
-  qrCode          String?
-  lastConnected   DateTime?
-  
-  // Bot configuration
-  botEnabled      Boolean              @default(false)
-  botPrompt       String?
-  
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  
-  // Relacionamentos
-  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@map("whatsapp_configs")
-}
-
-enum WhatsappStatus {
-  DISCONNECTED
-  CONNECTING
-  CONNECTED
-  ERROR
-}
-
-// ======================================
-// WhatsApp Bot Messages (Histórico IA)
-// ======================================
-model WhatsappMessage {
-  id               String           @id @default(cuid())
-  companyId        String
-  phone            String           // Número do cliente (E.164 ou local sem +, padronizar na aplicação)
-  direction        MessageDirection // IN (recebida) | OUT (enviada)
-  role             String           // user | assistant | system (compatível com formatos de chat)
-  content          String
-  intent           String?          // Intent classificada (ex: BUSCAR_PRODUTO)
-  intentConfidence Float?           // 0..1
-  meta             Json?            // Campos adicionais (ex: entidades extraídas)
-  createdAt        DateTime         @default(now())
-  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([companyId, phone, createdAt])
-  @@map("whatsapp_messages")
-}
-
-enum MessageDirection {
-  IN
-  OUT
-}
-
-// Pedidos finalizados via fluxo WhatsApp (supplier)
-model WhatsappOrder {
-  id             String               @id @default(cuid())
-  companyId      String
-  phone          String
-  items          Json                 // [{serviceId, name, quantity, unitPrice}]
-  totalItems     Int
-  totalDistinct  Int
-  totalEstimated Float                @default(0)
-  status         WhatsappOrderStatus  @default(PENDING)
-  createdAt      DateTime             @default(now())
-  // For realtime supplier filtering (distinct supplier IDs involved in this order)
-  supplierIdsDistinct String[]        @default([])
-  source         WhatsappOrderSource  @default(WHATSAPP)
-  company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  suppliers      WhatsappOrderSupplier[]
-
-  @@index([companyId, phone, createdAt])
-  @@map("whatsapp_orders")
-}
-
-// Pivot para permitir filtro eficiente por supplierId em realtime
-model WhatsappOrderSupplier {
-  orderId    String
-  supplierId String
-  createdAt  DateTime @default(now())
-  order      WhatsappOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  supplier   Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-
-  @@id([orderId, supplierId])
-  @@index([supplierId])
-  @@map("whatsapp_order_suppliers")
-}
-
-enum WhatsappOrderStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-}
-
-enum WhatsappOrderSource {
-  WHATSAPP
-  PLATFORM
-}
-
-// ======================================
-// WhatsApp Bot Cart Items (Carrinho IA)
-// ======================================
-model WhatsappCartItem {
-  id         String          @id @default(cuid())
-  companyId  String
-  phone      String
-  serviceId  String
-  quantity   Int             @default(1)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  service    SupplierService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-
-  @@unique([companyId, phone, serviceId])
-  @@index([companyId, phone])
-  @@map("whatsapp_cart_items")
 }

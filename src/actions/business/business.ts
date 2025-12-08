@@ -22,10 +22,6 @@ export interface BusinessUpdateInput {
   acceptsPickup?: boolean
   acceptsDineIn?: boolean
   slug?: string | null
-  // Mercado Pago
-  mercadoPagoPublicKey?: string | null
-  mercadoPagoAccessToken?: string | null
-  mercadoPagoConfigured?: boolean
 }
 
 export interface BusinessData {
@@ -92,10 +88,6 @@ export async function updateBusiness(
       acceptsPickup: boolean
       acceptsDineIn: boolean
       slug: string | null
-      // Mercado Pago
-      mercadoPagoPublicKey?: string | null
-      mercadoPagoAccessToken?: string | null
-      mercadoPagoConfigured?: boolean
     }> = {}
 
     // Aplicar atualizações condicionalmente
@@ -111,11 +103,6 @@ export async function updateBusiness(
     if (typeof updates.acceptsDelivery === 'boolean') data.acceptsDelivery = updates.acceptsDelivery
     if (typeof updates.acceptsPickup === 'boolean') data.acceptsPickup = updates.acceptsPickup
     if (typeof updates.acceptsDineIn === 'boolean') data.acceptsDineIn = updates.acceptsDineIn
-
-  // Mercado Pago
-  if (updates.mercadoPagoPublicKey !== undefined) data.mercadoPagoPublicKey = updates.mercadoPagoPublicKey
-  if (updates.mercadoPagoAccessToken !== undefined) data.mercadoPagoAccessToken = updates.mercadoPagoAccessToken
-  if (typeof updates.mercadoPagoConfigured === 'boolean') data.mercadoPagoConfigured = updates.mercadoPagoConfigured
 
     // Tratamento especial para isOpen
     if (typeof updates.isOpen === 'boolean') data.isOpen = updates.isOpen
@@ -166,9 +153,6 @@ export async function updateBusiness(
         ...(data.acceptsDelivery !== undefined ? { acceptsDelivery: data.acceptsDelivery } : {}),
         ...(data.acceptsPickup !== undefined ? { acceptsPickup: data.acceptsPickup } : {}),
         ...(data.acceptsDineIn !== undefined ? { acceptsDineIn: data.acceptsDineIn } : {}),
-        ...(data.mercadoPagoPublicKey !== undefined ? { mercadoPagoPublicKey: data.mercadoPagoPublicKey } : {}),
-        ...(data.mercadoPagoAccessToken !== undefined ? { mercadoPagoAccessToken: data.mercadoPagoAccessToken } : {}),
-        ...(data.mercadoPagoConfigured !== undefined ? { mercadoPagoConfigured: data.mercadoPagoConfigured } : {}),
         ...(data.slug !== undefined ? { slug: data.slug } : {}),
       },
       select: {
@@ -188,9 +172,6 @@ export async function updateBusiness(
         acceptsDelivery: true,
         acceptsPickup: true,
         acceptsDineIn: true,
-        mercadoPagoPublicKey: true,
-        mercadoPagoConfigured: true,
-        mercadoPagoAccessToken: true,
       }
     })
 

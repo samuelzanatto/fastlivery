@@ -2,12 +2,9 @@ import { betterAuth } from "better-auth"
 import { nextCookies } from "better-auth/next-js"
 import { prismaAdapter } from "better-auth/adapters/prisma"
 import { emailOTP, admin, organization } from "better-auth/plugins"
-import { PrismaClient } from "@prisma/client"
-import Stripe from "stripe"
-import { stripe as stripePlugin } from "@better-auth/stripe"
-import { prisma as prismaShared } from "../database/prisma"
-import SubscriptionService from "../billing/subscription-service"
+import { prisma } from "../database/prisma"
 import nodemailer from "nodemailer"
+import bcrypt from "bcryptjs"
 import { 
   ac,
   // Roles de negócio genéricas
@@ -15,10 +12,6 @@ import {
   businessAdmin,
   businessManager,
   businessStaff,
-  // Roles específicas para fornecedores B2B
-  supplierOwner,
-  supplierManager,
-  supplierStaff,
   // Roles de plataforma
   platformAdmin,
   platformSupport,
@@ -27,14 +20,6 @@ import {
   // Constantes
   PLATFORM_ROLES
 } from "./auth-permissions"
-
-// Use prisma compartilhado para evitar múltiplas conexões
-const prisma = prismaShared ?? new PrismaClient()
-
-// Stripe client
-const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-08-27.basil",
-})
 
 // Configuração SMTP para envio de OTP
 const createTransporter = () => {
@@ -75,6 +60,14 @@ export const auth = betterAuth({
     requireEmailVerification: true,
     minPasswordLength: 8,
     maxPasswordLength: 128,
+    password: {
+      hash: async (password) => {
+        return await bcrypt.hash(password, 10)
+      },
+      verify: async ({ hash, password }) => {
+        return await bcrypt.compare(password, hash)
+      }
+    }
   },
   socialProviders: {
     google: {
@@ -187,16 +180,11 @@ export const auth = betterAuth({
       impersonationSessionDuration: 60 * 60 * 24, // 24 horas
       ac,
       roles: {
-        // Roles de negócio genéricas
+        // Roles de negócio
         businessOwner,
         businessAdmin,
         businessManager,
         businessStaff,
-        
-        // Roles específicas para fornecedores B2B
-        supplierOwner,
-        supplierManager,
-        supplierStaff,
         
         // Roles de plataforma
         platformAdmin,
@@ -266,19 +254,6 @@ export const auth = betterAuth({
             subscriptionPlan: {
               type: "string",
               required: false,
-            },
-            // Configurações de pagamento
-            mercadoPagoAccessToken: {
-              type: "string",
-              required: false,
-            },
-            mercadoPagoPublicKey: {
-              type: "string",
-              required: false,
-            },
-            mercadoPagoConfigured: {
-              type: "boolean",
-              required: false,
             }
           }
         },
@@ -322,159 +297,6 @@ export const auth = betterAuth({
         }
       }
     }),
-
-    stripePlugin({
-      stripeClient,
-      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
-      createCustomerOnSignUp: false,
-      // Hooks de assinatura - integram com o seu modelo Subscription/Business
-      subscription: {
-        enabled: true,
-        plans: [
-          { name: "starter", priceId: process.env.STRIPE_STARTER_PRICE_ID! },
-          { name: "pro", priceId: process.env.STRIPE_PRO_PRICE_ID! },
-          { name: "enterprise", priceId: process.env.STRIPE_ENTERPRISE_PRICE_ID! },
-        ],
-          
-        onSubscriptionComplete: async ({ subscription, stripeSubscription, plan }) => {
-        // referenceId pode ser o userId por padrão; aqui vamos ativar a empresa do dono, se existir
-        try {
-          const businessId = subscription.referenceId
-          let business = businessId
-            ? await prisma.business.findUnique({ where: { id: businessId } })
-            : null
-
-          // Se não houver referenceId/business, tentar localizar pelo customer -> user -> business
-          if (!business) {
-            const stripeCustomerId = stripeSubscription ? String(stripeSubscription.customer || "") : undefined
-            if (stripeCustomerId) {
-              const user = await prisma.user.findFirst({ where: { stripeCustomerId } })
-              if (user) {
-                business = await prisma.business.findFirst({ where: { ownerId: user.id } })
-                // Se ainda não houver, criar um negócio mínimo
-                if (!business) {
-                  const defaultName = user.name ? `Negócio de ${user.name}` : 'Minha Empresa'
-                  business = await prisma.business.create({
-                    data: {
-                      name: defaultName,
-                      email: `${user.email}-business`,
-                      password: 'temporary',
-                      phone: '',
-                      address: 'A definir',
-                      description: 'Negócio criado automaticamente após assinatura',
-                      ownerId: user.id,
-                      isActive: false,
-                      isOpen: false,
-                      acceptsDelivery: true,
-                      acceptsPickup: true,
-                      acceptsDineIn: false,
-                      minimumOrder: 0,
-                      deliveryFee: 0,
-                      deliveryTime: 30,
-                    }
-                  })
-                }
-              }
-            }
-          }
-
-          if (!business) return
-            // Atualiza/Cria assinatura na base local
-            const priceId = (stripeSubscription && stripeSubscription.items.data[0]?.price?.id) || plan?.priceId || ""
-            const exists = await prisma.subscription.findUnique({ where: { businessId: business.id } })
-            if (!exists) {
-              await SubscriptionService.createSubscription(
-                business.id,
-                plan?.name || "starter",
-                priceId,
-                stripeSubscription ? String(stripeSubscription.customer || "") : undefined,
-                stripeSubscription ? stripeSubscription.id : undefined
-              )
-            } else {
-              await prisma.subscription.update({
-                where: { businessId: business.id },
-                data: {
-                  status: "ACTIVE",
-                  stripeCustomerId: stripeSubscription ? String(stripeSubscription.customer || "") : undefined,
-                  stripeSubscriptionId: stripeSubscription ? stripeSubscription.id : undefined,
-                }
-              })
-            }
-            // Ativa negócio e usuário dono
-            await prisma.business.update({
-              where: { id: business.id },
-              data: { isActive: true }
-            })
-            if (business.ownerId) {
-              await prisma.user.update({
-                where: { id: business.ownerId },
-                data: { isActive: true }
-              })
-            }
-          } catch (e) {
-            console.error("onSubscriptionComplete error:", e)
-          }
-        },
-
-        onSubscriptionUpdate: async ({ subscription }) => {
-          try {
-            const businessId = subscription.referenceId
-            
-            if (!businessId) return
-            const business = await prisma.business.findUnique({ where: { id: businessId } })
-            
-            if (!business) return
-            await prisma.subscription.update({
-              where: { businessId: business.id },
-              data: {
-                // Atualize status conforme sua lógica; aqui mantemos status atual
-              }
-            })
-          } catch (e) {
-            console.error("onSubscriptionUpdate error:", e)
-          }
-        },
-
-        onSubscriptionCancel: async ({ subscription }) => {
-          try {
-            const businessId = subscription.referenceId
-            if (!businessId) return
-            const business = await prisma.business.findUnique({ where: { id: businessId } })
-            if (!business) return
-            await prisma.subscription.update({
-              where: { businessId: business.id },
-              data: {
-                status: "CANCELLED",
-                canceledAt: new Date(),
-              }
-            })
-            await prisma.business.update({
-              where: { id: business.id },
-              data: { isActive: false }
-            })
-          } catch (e) {
-            console.error("onSubscriptionCancel error:", e)
-          }
-        },
-      },
-      // Callback geral para eventos que você queira observar
-      
-      onEvent: async (event) => {
-        // Checkout público: não criar nada aqui; delegar para /api/checkout/public/finish-signup
-        if (event.type === "checkout.session.completed") {
-          try {
-            const raw = event as unknown as { payload?: { data?: { object?: unknown } }, data?: { object?: unknown } }
-            const session = (raw?.payload?.data?.object || raw?.data?.object) as Stripe.Checkout.Session | undefined
-            
-            if (!session) return
-            // Apenas log: quem finalizará será o endpoint finish-signup
-            console.info('[Stripe] checkout.session.completed recebido', { id: session.id })
-            } catch (e) {
-            console.error('[Stripe] checkout.session.completed handler error:', e)
-          }
-        }
-      }
-    })
   ]
 })
 

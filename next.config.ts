@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
   // Desabilitar source maps em produção por segurança
   productionBrowserSourceMaps: false,
 
+  // Configuração do Turbopack para Next.js 16
+  turbopack: {
+    // Configurações específicas para Supabase
+    resolveAlias: {
+      // Mapear módulos que não funcionam bem com Turbopack
+    }
+  },
+
   // Configuração experimental para melhorar cache do router
   experimental: {
     // Configurar client-side router cache stale times
@@ -14,34 +22,6 @@ const nextConfig: NextConfig = {
       dynamic: 30, // 30 segundos para rotas dinâmicas
       static: 300, // 5 minutos para rotas estáticas  
     }
-  },
-
-  // Configurações para reduzir Fast Refresh excessivo em desenvolvimento
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  webpack: (config: Record<string, any>, { dev }: { dev: boolean }) => {
-    if (dev) {
-      // Reduzir sensibilidade do Fast Refresh
-      config.watchOptions = {
-        poll: 1000, // Poll a cada 1 segundo ao invés de filesystem events
-        aggregateTimeout: 300, // Aguardar 300ms antes de rebuild
-        ignored: /node_modules/
-      }
-    }
-
-    // Configurações específicas para Supabase
-    config.resolve = config.resolve || {}
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      net: false,
-      tls: false,
-      crypto: false,
-    }
-
-    // Otimizações para ESM modules
-    config.externals = [...(config.externals || []), 'ws', 'bufferutil', 'utf-8-validate']
-
-    return config
   },
 
   // Configuração para permitir recursos do Mercado Pago
@@ -82,6 +62,38 @@ const nextConfig: NextConfig = {
             value: 'camera=(), microphone=(), geolocation=()'
           }
         ]
+      },
+      // Headers específicos para o Service Worker (PWA)
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/javascript; charset=utf-8',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+          {
+            key: 'Service-Worker-Allowed',
+            value: '/',
+          }
+        ]
+      },
+      // Headers para manifest dinâmico
+      {
+        source: '/:slug/manifest.json',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/manifest+json',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=3600',
+          }
+        ]
       }
     ]
   },
@@ -90,7 +102,6 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   
   images: {
-    domains: ['localhost', '192.168.1.106', 'your-domain.com', 'secure.mlstatic.com', 'http2.mlstatic.com'],
     remotePatterns: [
       {
         protocol: 'https',
@@ -133,6 +144,18 @@ const nextConfig: NextConfig = {
         hostname: '*.supabase.co',
         port: '',
         pathname: '/storage/v1/object/public/**',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '*',
+        pathname: '/**',
+      },
+      {
+        protocol: 'http',
+        hostname: '192.168.1.106',
+        port: '*',
+        pathname: '/**',
       }
     ]
   }

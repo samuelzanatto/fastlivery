@@ -54,15 +54,14 @@ export const statement = {
   // Gestão Financeira e Cobrança
   billing: [
     "view",        // Ver informações de cobrança
-    "manage",      // Alterar planos e formas de pagamento
+    "manage",      // Alterar status de pagamento dos pedidos
     "history"      // Histórico completo de transações
   ],
   
-  // Configurações de Pagamento (Stripe, MercadoPago)
-  payments: [
-    "view",        // Ver configurações atuais
-    "configure",   // Configurar gateways de pagamento
-    "test"         // Executar testes de pagamento
+  // Gestão de Status de Pagamento de Pedidos
+  payment_status: [
+    "view",        // Ver status de pagamento
+    "update"       // Atualizar status de pagamento manualmente
   ],
   
   // Gestão de Mesas (para Dine-in)
@@ -170,7 +169,7 @@ export const businessOwner = ac.newRole({
   employees: ["view", "invite", "manage", "remove", "salary"],
   analytics: ["view", "advanced", "export", "financial"],
   billing: ["view", "manage", "history"],
-  payments: ["view", "configure", "test"],
+  payment_status: ["view", "update"],
   tables: ["view", "manage", "reserve", "qr"],
   promotions: ["view", "create", "update", "delete", "analytics"],
   settings: ["view", "update", "advanced", "security"],
@@ -189,7 +188,7 @@ export const businessAdmin = ac.newRole({
   employees: ["view", "invite", "manage", "remove", "salary"],
   analytics: ["view", "advanced", "export", "financial"],
   billing: ["view", "manage", "history"],
-  payments: ["view", "configure", "test"],
+  payment_status: ["view", "update"],
   tables: ["view", "manage", "reserve", "qr"],
   promotions: ["view", "create", "update", "delete", "analytics"],
   settings: ["view", "update", "advanced"], // sem security
@@ -208,7 +207,7 @@ export const businessManager = ac.newRole({
   employees: ["view", "invite", "manage"],
   analytics: ["view", "advanced", "export"],
   billing: ["view"],
-  payments: ["view"],
+  payment_status: ["view"],
   tables: ["view", "manage", "reserve", "qr"],
   promotions: ["view", "create", "update", "delete", "analytics"],
   settings: ["view", "update"],
@@ -227,7 +226,7 @@ export const businessStaff = ac.newRole({
   employees: ["view"],
   analytics: ["view"],
   billing: [],
-  payments: [],
+  payment_status: [],
   tables: ["view", "reserve"],
   promotions: ["view"],
   settings: ["view"],
@@ -250,7 +249,7 @@ export const supplierOwner = ac.newRole({
   employees: ["view", "invite", "manage", "remove", "salary"],
   analytics: ["view", "advanced", "export", "financial"],
   billing: ["view", "manage", "history"],
-  payments: ["view", "configure", "test"],
+  payment_status: ["view", "update"],
   tables: [],
   promotions: [],
   settings: ["view", "update", "advanced", "security"],
@@ -269,7 +268,7 @@ export const supplierManager = ac.newRole({
   employees: ["view", "invite", "manage"],
   analytics: ["view", "advanced", "export"],
   billing: ["view"],
-  payments: ["view"],
+  payment_status: ["view"],
   tables: [],
   promotions: [],
   settings: ["view", "update"],
@@ -288,7 +287,7 @@ export const supplierStaff = ac.newRole({
   employees: ["view"],
   analytics: ["view"],
   billing: [],
-  payments: [],
+  payment_status: [],
   tables: [],
   promotions: [],
   settings: ["view"],
@@ -323,10 +322,15 @@ export const platformAdmin = ac.newRole({
   employees: ["view", "invite", "manage", "remove", "salary"],
   analytics: ["view", "advanced", "export", "financial"],
   billing: ["view", "manage", "history"],
-  payments: ["view", "configure", "test"],
+  payment_status: ["view", "update"],
   tables: ["view", "manage", "reserve", "qr"],
   promotions: ["view", "create", "update", "delete", "analytics"],
-  settings: ["view", "update", "advanced", "security"]
+  settings: ["view", "update", "advanced", "security"],
+  marketplace: [],
+  partnerships: [],
+  supplier_products: [],
+  leads: [],
+  reviews: ["view", "respond", "request"]
 });
 
 // 🛠️ SUPPORT - Suporte Técnico
@@ -338,10 +342,15 @@ export const platformSupport = ac.newRole({
   employees: ["view"],
   analytics: ["view", "advanced", "export"],
   billing: ["view", "history"],
-  payments: ["view"],
+  payment_status: ["view"],
   tables: ["view"],
   promotions: ["view"],
-  settings: ["view"]
+  settings: ["view"],
+  marketplace: [],
+  partnerships: [],
+  supplier_products: [],
+  leads: [],
+  reviews: ["view"]
 });
 
 // 👥 CUSTOMER - Cliente Final
@@ -353,10 +362,15 @@ export const customer = ac.newRole({
   employees: [],
   analytics: [],
   billing: [],
-  payments: [],
+  payment_status: [],
   tables: ["view"],
   promotions: ["view"],
-  settings: []
+  settings: [],
+  marketplace: [],
+  partnerships: [],
+  supplier_products: [],
+  leads: [],
+  reviews: ["view"]
 });
 
 /**

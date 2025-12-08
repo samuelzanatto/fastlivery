@@ -280,7 +280,7 @@ export default function TablesPage() {
         number: data.number
       }
 
-      const result = await createTable(businessId, tableData)
+      const result = await createTable(tableData)
       
       if (result.success) {
         setTables(prev => [...prev, result.data])

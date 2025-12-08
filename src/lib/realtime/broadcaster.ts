@@ -5,7 +5,7 @@ import type {
   OrderRealtimePayload,
   WhatsAppOrderRealtimePayload
 } from './types'
-import { getSupplierWhatsAppOrdersChannel } from './types'
+import { getBusinessWhatsAppOrdersChannel } from './types'
 
 export class RealtimeBroadcaster {
   /**
@@ -52,21 +52,21 @@ export class RealtimeBroadcaster {
   }
 
   /**
-   * Envia notificação de pedido WhatsApp do fornecedor
+   * Envia notificação de pedido WhatsApp do negócio
    */
   static async broadcastWhatsAppOrder(
-    supplierId: string,
+    businessId: string,
     type: 'created' | 'updated' | 'processed',
     payload: WhatsAppOrderRealtimePayload
   ): Promise<boolean> {
   // Nome padronizado definido em CHANNEL_TYPES (usa hífens)
-  const channel = getSupplierWhatsAppOrdersChannel(supplierId)
+  const channel = getBusinessWhatsAppOrdersChannel(businessId)
     const message: RealtimeMessage = {
       id: crypto.randomUUID(),
       type: `whatsapp_order_${type}` as RealtimeMessageType,
       payload,
       timestamp: new Date().toISOString(),
-      supplierId
+      businessId
     }
 
     return this.send(channel, message)

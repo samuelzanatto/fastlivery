@@ -15,7 +15,6 @@ import {
   validateData,
   validateId 
 } from '@/lib/actions/validation-helpers'
-import { withLimitCheck } from '@/lib/actions/billing-helpers'
 
 export interface Employee {
   id: string
@@ -227,12 +226,13 @@ export const getEmployee = withBusiness(_getEmployee)
  * Criar novo funcionário
  */
 async function _createEmployee(
-  businessId: string,
-  input: EmployeeCreateInput,
-  createdById: string
+  { business, user: currentUser }: BusinessContext,
+  input: EmployeeCreateInput
 ): Promise<ActionResult<Employee>> {
   try {
     const validatedData = validateData(EmployeeSchema, input)
+    const businessId = business.id
+    const createdById = currentUser.id
 
     // Verificar se o cargo existe e pertence ao negócio
     const role = await prisma.role.findFirst({
@@ -350,7 +350,7 @@ async function _createEmployee(
   }
 }
 
-export const createEmployee = withLimitCheck('user', _createEmployee)
+export const createEmployee = withBusiness(_createEmployee)
 
 /**
  * Atualizar funcionário

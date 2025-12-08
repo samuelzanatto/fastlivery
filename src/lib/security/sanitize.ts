@@ -9,7 +9,6 @@
 const SENSITIVE_FIELDS = [
   'password', 'token', 'secret', 'key', 'accessToken', 'refreshToken',
   'privateKey', 'signature', 'hash', 'salt', 'otp', 'code',
-  'stripeCustomerId', 'mercadoPagoAccessToken', 'webhookSecret',
   'better_auth_secret', 'smtp_pass', 'credentials'
 ]
 

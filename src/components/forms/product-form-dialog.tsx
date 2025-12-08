@@ -181,7 +181,7 @@ export function ProductFormDialog({
       if (isEditing && product) {
         result = await updateProduct(product.id, payload)
       } else {
-        result = await createProduct(businessId, payload)
+        result = await createProduct(payload)
       }
 
       if (!result.success) {

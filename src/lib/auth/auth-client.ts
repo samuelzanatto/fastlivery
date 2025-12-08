@@ -1,5 +1,4 @@
 import { createAuthClient } from "better-auth/react"
-import { stripeClient } from "@better-auth/stripe/client"
 import { adminClient, organizationClient, inferAdditionalFields } from "better-auth/client/plugins"
 import { emailOTPClient } from "better-auth/client/plugins"
 import type { auth } from './auth'
@@ -12,12 +11,6 @@ export const BUSINESS_ROLES = {
   businessStaff: 'businessStaff'
 } as const
 
-export const SUPPLIER_ROLES = {
-  supplierOwner: 'supplierOwner',
-  supplierManager: 'supplierManager',
-  supplierStaff: 'supplierStaff'
-} as const
-
 export const PLATFORM_ROLES = {
   platformAdmin: 'platformAdmin',
   platformSupport: 'platformSupport'
@@ -26,20 +19,12 @@ export const PLATFORM_ROLES = {
 export const CUSTOMER_ROLE = 'customer' as const
 
 export type BusinessRole = keyof typeof BUSINESS_ROLES
-export type SupplierRole = keyof typeof SUPPLIER_ROLES
 export type PlatformRole = keyof typeof PLATFORM_ROLES
-export type UserRole = BusinessRole | SupplierRole | PlatformRole | typeof CUSTOMER_ROLE
+export type UserRole = BusinessRole | PlatformRole | typeof CUSTOMER_ROLE
 
 // Access Control Helper Functions
 export const hasBusinessAccess = (role?: string): boolean => {
-  return role ? (
-    Object.values(BUSINESS_ROLES).includes(role as BusinessRole) ||
-    Object.values(SUPPLIER_ROLES).includes(role as SupplierRole)
-  ) : false
-}
-
-export const hasSupplierAccess = (role?: string): boolean => {
-  return role ? Object.values(SUPPLIER_ROLES).includes(role as SupplierRole) : false
+  return role ? Object.values(BUSINESS_ROLES).includes(role as BusinessRole) : false
 }
 
 export const hasPlatformAccess = (role?: string): boolean => {
@@ -74,7 +59,6 @@ if (isBrowser && absoluteBase && window.location.origin !== absoluteBase) {
 export const authClient = createAuthClient({
   baseURL,
   plugins: [
-    stripeClient({ subscription: true }),
     adminClient(),
     organizationClient(),
     emailOTPClient(),
@@ -88,7 +72,5 @@ export const {
   signUp,
   signOut,
   useSession,
-  getSession,
-  // Plugin Stripe: expõe client.subscription.*
-  subscription
+  getSession
 } = authClient

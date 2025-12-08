@@ -23,7 +23,6 @@ export interface RealtimeMessage {
   timestamp: string | number
   companyId?: string
   businessId?: string
-  supplierId?: string
   orderId?: string
   metadata?: Record<string, unknown>
 }
@@ -62,7 +61,7 @@ export interface WhatsAppOrderRealtimePayload {
   id: string
   phone: string
   companyId: string
-  supplierIds: string[]
+  businessIds: string[]
   items: Array<{
     serviceId: string
     name: string
@@ -85,8 +84,8 @@ export const CHANNEL_TYPES = {
   // Pedidos de negócios (restaurantes)
   BUSINESS_ORDERS: 'business-orders',
   
-  // Pedidos do WhatsApp (suppliers)
-  SUPPLIER_WHATSAPP_ORDERS: 'supplier-whatsapp-orders',
+  // Pedidos do WhatsApp
+  BUSINESS_WHATSAPP_ORDERS: 'business-whatsapp-orders',
   
   // Notificações gerais da empresa
   COMPANY_NOTIFICATIONS: 'company-notifications',
@@ -102,8 +101,8 @@ export function getBusinessOrdersChannel(businessId: string): string {
   return `${CHANNEL_TYPES.BUSINESS_ORDERS}:${businessId}`
 }
 
-export function getSupplierWhatsAppOrdersChannel(supplierId: string): string {
-  return `${CHANNEL_TYPES.SUPPLIER_WHATSAPP_ORDERS}:${supplierId}`
+export function getBusinessWhatsAppOrdersChannel(businessId: string): string {
+  return `${CHANNEL_TYPES.BUSINESS_WHATSAPP_ORDERS}:${businessId}`
 }
 
 export function getCompanyNotificationsChannel(companyId: string): string {

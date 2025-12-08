@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import type { RealtimeMessage, RealtimeMessageType } from './types'
 
 type RealtimeChannelType = ReturnType<typeof supabase.channel>
@@ -13,16 +13,17 @@ export class RealtimeManager {
   subscribe(
     channelName: string, 
     callback: (message: RealtimeMessage) => void,
-    options: { private?: boolean; table?: string; schema?: string } = { private: true }
+    options: { private?: boolean; table?: string; schema?: string } = { private: false }
   ): RealtimeChannelType {
     // Remove canal existente se houver
     this.unsubscribe(channelName)
 
-    // Configuração padrão com autenticação habilitada
-    const requestedPrivate = options.private ?? true
+    // Usar canais públicos para compatibilidade com broadcasts do banco
+    // O banco envia com private=false, então o cliente também precisa usar false
+    const requestedPrivate = options.private ?? false
     const channel = supabase.channel(channelName, {
       config: { 
-        private: requestedPrivate, // Agora usa autenticação
+        private: requestedPrivate, // false = público para receber broadcasts do banco
         broadcast: { self: false },
         presence: { key: channelName }
       }
@@ -114,8 +115,8 @@ export class RealtimeManager {
 
     // Subscrever ao canal com retry automático e backoff exponencial
     let retryCount = 0
-    const maxRetries = 5
-    const baseDelay = 1000
+    const maxRetries = 3
+    const baseDelay = 2000
     
     const handleSubscription = (status: string) => {
       
@@ -123,16 +124,23 @@ export class RealtimeManager {
         console.log(`✅ Conectado ao canal: ${channelName}`)
         retryCount = 0 // Reset contador em conexão bem-sucedida
       } else if (status === 'CHANNEL_ERROR') {
-        const errorMsg = `Erro ao conectar ao canal: ${channelName}`
-        console.error(`❌ ${errorMsg}`)
-        this.scheduleReconnect(channelName, channel, retryCount++, maxRetries, baseDelay)
+        // Só mostrar erro se já tentou reconectar
+        if (retryCount === 0) {
+          console.warn(`⚠️ Não foi possível conectar ao canal: ${channelName} (verificar se Realtime está configurado)`)
+        }
+        if (retryCount < maxRetries) {
+          this.scheduleReconnect(channelName, channel, retryCount++, maxRetries, baseDelay)
+        }
       } else if (status === 'TIMED_OUT') {
-        const errorMsg = `Timeout ao conectar ao canal: ${channelName}`
-        console.error(`⏱️ ${errorMsg}`)
-        this.scheduleReconnect(channelName, channel, retryCount++, maxRetries, baseDelay * 2)
+        console.warn(`⏱️ Timeout ao conectar ao canal: ${channelName}`)
+        if (retryCount < maxRetries) {
+          this.scheduleReconnect(channelName, channel, retryCount++, maxRetries, baseDelay * 2)
+        }
       } else if (status === 'CLOSED') {
-        console.warn(`🔌 Canal fechado: ${channelName}`)
-        this.scheduleReconnect(channelName, channel, retryCount++, maxRetries, baseDelay)
+        console.debug(`🔌 Canal fechado: ${channelName}`)
+        if (retryCount < maxRetries) {
+          this.scheduleReconnect(channelName, channel, retryCount++, maxRetries, baseDelay)
+        }
       }
     }
     
@@ -196,13 +204,19 @@ export class RealtimeManager {
   }
 
   /**
-   * Envia mensagem via API REST do Supabase
+   * Envia mensagem via API REST do Supabase (apenas server-side)
    */
   static async sendMessageViaREST(
     channelName: string,
     message: RealtimeMessage
   ): Promise<void> {
+    // Import dinâmico para evitar carregar supabaseAdmin no browser
+    if (typeof window !== 'undefined') {
+      throw new Error('sendMessageViaREST só pode ser chamado no servidor')
+    }
+    
     try {
+      const { supabaseAdmin } = await import('@/lib/supabase')
       const { error } = await supabaseAdmin.rpc('broadcast_message', {
         channel_name: channelName,
         event_name: message.type,
