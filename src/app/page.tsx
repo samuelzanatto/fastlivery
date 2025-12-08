@@ -140,8 +140,7 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
             className="flex items-center space-x-2"
           >
-            <Zap className="h-8 w-8 text-orange-500" />
-            <span className="text-2xl font-bold text-slate-800">FastLivery</span>
+            <img src="/logo with name.png" alt="FastLivery Logo" className="h-12 w-auto" />
           </motion.div>
           
           <motion.div

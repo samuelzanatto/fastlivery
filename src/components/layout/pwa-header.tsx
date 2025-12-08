@@ -345,13 +345,15 @@ export function PWAHeader({
             {title && (
               <div className="flex items-center gap-2">
                 {title === 'FastLivery' && (
-                  <Zap className="w-6 h-6 text-orange-500" />
+                  <img src="/logo with name.png" alt="FastLivery Logo" className="h-10 w-auto" />
                 )}
-                <h1 className={`font-semibold text-lg truncate transition-all duration-300 ${
-                  scrollBlur && !isScrolled ? 'text-slate-800 drop-shadow-sm' : 'text-slate-800'
-                }`}>
-                  {title}
-                </h1>
+                {title !== 'FastLivery' && (
+                  <h1 className={`font-semibold text-lg truncate transition-all duration-300 ${
+                    scrollBlur && !isScrolled ? 'text-slate-800 drop-shadow-sm' : 'text-slate-800'
+                  }`}>
+                    {title}
+                  </h1>
+                )}
               </div>
             )}
           </div>
