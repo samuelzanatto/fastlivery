@@ -8,7 +8,6 @@ Sistema completo de delivery com assinaturas e pagamentos integrados.
 - **Backend**: Next.js API Routes
 - **Database**: PostgreSQL + Prisma ORM
 - **Autenticação**: Better Auth (com Prisma) + Middleware
-- **Pagamentos**: Stripe via plugin oficial `@better-auth/stripe`
 - **UI**: shadcn/ui + Lucide Icons
 
 ## 🚀 Início Rápido
@@ -35,17 +34,7 @@ npx prisma migrate dev
 npx prisma generate
 ```
 
-### 3. Configuração do Stripe
-
-⚠️ **IMPORTANTE**: O sistema utiliza exclusivamente o Stripe para pagamentos!
-
-Siga o guia:
-- Criar conta no Stripe
-- Configurar produtos e preços
-- Obter chaves da API
-- Configurar webhook apontando para: `/api/auth/stripe/webhook`
-
-### 4. Variáveis de Ambiente
+### 3. Variáveis de Ambiente
 
 Copie o arquivo `.env.example` para `.env` e configure:
 
@@ -55,14 +44,6 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/fastlivery"
 
 # JWT
 JWT_SECRET="your-super-secret-jwt-key"
-
-# Stripe
-STRIPE_SECRET_KEY="sk_test_..."
-STRIPE_PUBLISHABLE_KEY="pk_test_..."
-STRIPE_WEBHOOK_SECRET="whsec_..."
-STRIPE_STARTER_PRICE_ID="price_..."
-STRIPE_PRO_PRICE_ID="price_..."
-STRIPE_ENTERPRISE_PRICE_ID="price_..."
 
 # App
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
@@ -84,9 +65,9 @@ node test-stripe.js
 - [x] Sistema de autenticação com middleware
 - [x] Dashboard responsivo com sidebar
 - [x] Fluxo de cadastro em 4 etapas
-- [x] Integração com Stripe para pagamentos
-- [x] Webhooks do Stripe configurados
-- [x] Planos de assinatura (Básico, Pro, Enterprise)
+- [x] Autenticação com Better Auth
+- [x] CRUD de restaurantes
+- [x] Sistema de pedidos
 
 ### 🔄 Em Desenvolvimento
 - [ ] Criação automática de empresas após pagamento
@@ -100,15 +81,13 @@ node test-stripe.js
 
 ```
 /                    # Landing page
-/signup             # Cadastro + criação de restaurante + upgrade (redirect Stripe)
+/signup             # Cadastro + criação de restaurante
 /dashboard          # Dashboard principal (protegido)
 /admin              # Área administrativa (protegido)
 
 # APIs
 /api/auth/[...all]                    # Endpoints Better Auth
-/api/auth/stripe/webhook              # Webhook do Stripe (plugin Better Auth)
 /api/restaurant/create                # Cria restaurante do usuário autenticado
-/api/subscription/upgrade             # Upgrade de plano (server-side)
 ```
 
 ## 🔐 Autenticação
@@ -117,25 +96,6 @@ O sistema usa Better Auth (cookies HttpOnly) e middleware:
 - Rotas protegidas: `/dashboard`, `/admin`
 - Redirecionamento para `/signin` quando não autenticado
 - Sessão gerenciada automaticamente pelo Better Auth
-
-## 💳 Sistema de Pagamentos
-
-### Sistema de Pagamentos Stripe
-
-**Por que mudamos?**
-- ✅ Melhor documentação e SDK
-- ✅ Suporte internacional superior
-- ✅ Webhooks mais confiáveis
-- ✅ Melhor experiência de checkout
-- ✅ Portal de billing nativo
-
-### Planos Disponíveis
-
-| Plano | Preço | Recursos |
-|-------|-------|----------|
-| **Básico** | R$ 49,90/mês | Até 100 pedidos, Dashboard básico |
-| **Pro** | R$ 99,90/mês | Pedidos ilimitados, Relatórios avançados |
-| **Enterprise** | R$ 199,90/mês | API personalizada, Suporte 24/7 |
 
 ## 🔧 Scripts Úteis
 
@@ -179,13 +139,6 @@ vercel
 
 # Configurar variáveis de ambiente no dashboard da Vercel
 ```
-
-### Variáveis de Produção
-
-⚠️ **IMPORTANTE**: Use chaves **LIVE** do Stripe em produção:
-- `STRIPE_SECRET_KEY="sk_live_..."`
-- `STRIPE_PUBLISHABLE_KEY="pk_live_..."`
-- Configure webhooks para o domínio de produção
 
 ## 🤝 Contribuição
 
