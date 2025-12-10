@@ -108,9 +108,9 @@ async function _getMyBusiness(): Promise<ActionResult<BusinessWithRelations>> {
     }
 
     // Remover dados sensíveis
-    const { password: _password, ...businessData } = business
+    const { password: _password, ...returnedBusiness } = business
 
-    return createSuccessResult(businessData as BusinessWithRelations)
+    return createSuccessResult(returnedBusiness as BusinessWithRelations)
   } catch (error) {
     return handleActionError(error)
   }
@@ -128,11 +128,11 @@ async function _updateMyBusiness(
     const user = await getAuthenticatedUser()
 
     // Buscar negócio do usuário (dono ou funcionário com permissão)
-    const businessData = await findBusinessForUser(user.id, {
+    const businessUserData = await findBusinessForUser(user.id, {
       requiredPermission: { resource: 'settings', action: 'update' }
     })
 
-    if (!businessData) {
+    if (!businessUserData) {
       return {
         success: false,
         error: 'Negócio não encontrado ou sem permissão',
@@ -141,7 +141,7 @@ async function _updateMyBusiness(
     }
 
     const business = await prisma.business.findUnique({
-      where: { id: businessData.business.id }
+      where: { id: businessUserData.business.id }
     })
 
     if (!business) {
