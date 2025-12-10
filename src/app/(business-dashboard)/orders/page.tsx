@@ -7,6 +7,7 @@ import { notify } from '@/lib/notifications/notify'
 import { useOrdersRealtime } from '@/lib/realtime/hooks/use-orders-legacy'
 // Uso centralizado do businessId via store (remove fetch local redundante)
 import { useBusinessId } from '@/stores/business-store'
+import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -435,7 +436,7 @@ const TypeBadge = ({ type, tableNumber }: { type: OrderType; tableNumber?: numbe
 }
 
 // Componente de linha expandida
-const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating }: { order: Order; onOrderUpdate: () => void; isHydrating?: boolean }) => {
+const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating, canEdit, canDelete }: { order: Order; onOrderUpdate: () => void; isHydrating?: boolean; canEdit?: boolean; canDelete?: boolean }) => {
   const [chatOpen, setChatOpen] = useState(false)
 
   return (
@@ -519,10 +520,12 @@ const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating }: { order: Order;
                 </div>
 
                 {/* Ações */}
+                {canEdit && (
                 <div>
                   <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1 block">Ações</label>
                   <OrderActions order={order} />
                 </div>
+                )}
               </div>
 
               {/* Status badges e ações secundárias */}
@@ -544,7 +547,7 @@ const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating }: { order: Order;
                     <MessageCircle className="h-3 w-3 mr-1" />
                     Chat
                   </Button>
-                  {order.status !== "cancelled" && order.status !== "delivered" && (
+                  {canDelete && order.status !== "cancelled" && order.status !== "delivered" && (
                     <CancelOrderButton order={order} onOrderCancelled={onOrderUpdate} />
                   )}
                 </div>
@@ -662,6 +665,12 @@ export default function OrdersPage() {
   const { data: _sessionData } = useSession()
 
   const businessId = useBusinessId()
+  
+  // Permissões de pedidos
+  const { hasPermission } = useBusinessContext()
+  const canCreate = hasPermission('orders', 'create') || hasPermission('orders', 'manage')
+  const canEdit = hasPermission('orders', 'update') || hasPermission('orders', 'manage')
+  const canDelete = hasPermission('orders', 'delete') || hasPermission('orders', 'manage')
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -958,10 +967,12 @@ export default function OrdersPage() {
             {newOffPageCount} novo{newOffPageCount > 1 ? 's' : ''} – ver
           </Button>
         )}
+        {canCreate && (
         <DashboardHeaderButton onClick={() => setIsNewOrderDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Novo Pedido
         </DashboardHeaderButton>
+        )}
       </DashboardHeader>
 
       {/* Filters and Search */}
@@ -1089,7 +1100,7 @@ export default function OrdersPage() {
                     
                     // Linha expandida
                     ...(expandedRows.has(order.id) ? [
-                      <ExpandedOrderRow key={`${order.id}-expanded`} order={order} onOrderUpdate={fetchOrders} isHydrating={hydrating[order.id]} />
+                      <ExpandedOrderRow key={`${order.id}-expanded`} order={order} onOrderUpdate={fetchOrders} isHydrating={hydrating[order.id]} canEdit={canEdit} canDelete={canDelete} />
                     ] : [])
                   ]).flat()}
                 </TableBody>

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Zap, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Zap } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signIn } from '@/lib/auth/auth-client'
@@ -148,21 +148,6 @@ export default function LoginPage() {
         variants={fadeInLeft}
         transition={{ duration: 0.8, delay: isExiting ? 0.1 : 0.1 }}
       >
-        <motion.div 
-          className="flex justify-center gap-2 md:justify-start"
-          initial="initial"
-          animate={isExiting ? "exit" : "animate"}
-          variants={fadeInUp}
-          transition={{ duration: 0.6, delay: isExiting ? 0.1 : 0 }}
-        >
-          <Link href="/" className="flex items-center gap-2 font-medium" onClick={() => handleNavigation('/')}>
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-1.5 rounded-lg shadow-sm">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            FastLivery
-          </Link>
-        </motion.div>
-        
         <div className="flex flex-1 items-center justify-center">
           <motion.div 
             className="w-full max-w-xs"
@@ -205,7 +190,12 @@ export default function LoginPage() {
                   variants={fadeInUp}
                   transition={{ duration: 0.8, delay: isExiting ? 0.4 : 0.4 }}
                 >
-                  <Label htmlFor="password">Senha</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Senha</Label>
+                    <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline" onClick={() => handleNavigation('/forgot-password')}>
+                      Esqueceu a senha?
+                    </Link>
+                  </div>
                   <div className="relative">
                     <Input
                       id="password"
@@ -219,7 +209,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 flex items-center justify-center"
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -227,11 +217,6 @@ export default function LoginPage() {
                         <Eye className="h-4 w-4" />
                       )}
                     </button>
-                    <div className="flex justify-end mt-1">
-                      <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline" onClick={() => handleNavigation('/forgot-password')}>
-                        Esqueceu a senha?
-                      </Link>
-                    </div>
                   </div>
                 </motion.div>
                 
@@ -250,22 +235,6 @@ export default function LoginPage() {
                   </Button>
                 </motion.div>
               </form>
-              
-              <motion.div 
-                className="text-center text-sm"
-                initial="initial"
-                animate={isExiting ? "exit" : "animate"}
-                variants={fadeIn}
-                transition={{ duration: 0.8, delay: isExiting ? 0.6 : 0.6 }}
-              >
-                Não tem uma conta?{" "}
-                <button 
-                  onClick={() => handleNavigation('/signup')}
-                  className="underline text-orange-600 hover:text-orange-700"
-                >
-                  Criar conta
-                </button>
-              </motion.div>
 
               <motion.div 
                 className="text-center mt-4"

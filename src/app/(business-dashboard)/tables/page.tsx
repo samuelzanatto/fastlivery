@@ -25,6 +25,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { useBusinessId } from '@/stores/business-store'
+import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { DashboardHeader, DashboardHeaderButton } from '@/components/ui/dashboard-header'
 import {
   Form,
@@ -88,6 +89,13 @@ const getTableCapacity = (_table: Table): number => 4
 
 export default function TablesPage() {
   const businessId = useBusinessId()
+  const { hasPermission } = useBusinessContext()
+  
+  // Verificar permissões
+  const canCreate = hasPermission('tables', 'create') || hasPermission('tables', 'manage')
+  const canEdit = hasPermission('tables', 'update') || hasPermission('tables', 'manage')
+  const canDelete = hasPermission('tables', 'delete') || hasPermission('tables', 'manage')
+  
   const [focusedTable, setFocusedTable] = useState<string | null>(null)
   const [isLongPressing, setIsLongPressing] = useState<string | null>(null)
   const [showSubmenu, setShowSubmenu] = useState<string | null>(null)
@@ -97,6 +105,10 @@ export default function TablesPage() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [editingTable, setEditingTable] = useState<Table | null>(null)
   const [qrTable, setQrTable] = useState<Table | null>(null)
+  const [qrSize, setQrSize] = useState<number>(150) // Tamanho do QR em mm
+  const [showTableName, setShowTableName] = useState(true)
+  const [showCapacity, setShowCapacity] = useState(true)
+  const [showInstructions, setShowInstructions] = useState(true)
   
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
 
@@ -197,6 +209,10 @@ export default function TablesPage() {
   const handlePrintQR = () => {
     if (!qrTable) return
     
+    // Converter mm para pixels (aproximadamente 3.78 px/mm para 96 DPI)
+    const sizePx = Math.round(qrSize * 3.78)
+    const qrModuleSize = Math.max(2, Math.floor(sizePx / 33)) // 33 módulos aproximadamente para QR code
+    
     const printWindow = window.open('', '_blank')
     if (printWindow) {
       printWindow.document.write(`
@@ -204,41 +220,94 @@ export default function TablesPage() {
           <head>
             <title>QR Code - ${getTableName(qrTable)}</title>
             <style>
+              @page {
+                size: A4;
+                margin: 0;
+              }
+              * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+              }
               body { 
-                font-family: Arial, sans-serif; 
-                text-align: center; 
-                padding: 20px;
+                font-family: 'Segoe UI', Arial, sans-serif; 
+                width: 210mm;
+                min-height: 297mm;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 20mm;
+                background: white;
+              }
+              .qr-wrapper {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 16px;
+              }
+              .table-name { 
+                font-size: ${Math.max(24, qrSize / 4)}px;
+                font-weight: 700;
+                color: #1a1a1a;
+                margin-bottom: 8px;
               }
               .qr-container { 
-                margin: 20px auto; 
-                display: inline-block;
+                padding: 16px;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
               }
-              h1 { margin-bottom: 20px; }
-              .info { margin-top: 20px; font-size: 14px; color: #666; }
+              #qrcode img {
+                width: ${qrSize}mm !important;
+                height: ${qrSize}mm !important;
+              }
+              .info { 
+                text-align: center;
+                margin-top: 12px;
+              }
+              .capacity { 
+                font-size: ${Math.max(16, qrSize / 6)}px;
+                color: #666;
+                margin-bottom: 8px;
+              }
+              .instructions { 
+                font-size: ${Math.max(14, qrSize / 8)}px;
+                color: #888;
+              }
+              @media print {
+                body {
+                  -webkit-print-color-adjust: exact;
+                  print-color-adjust: exact;
+                }
+              }
             </style>
           </head>
           <body>
-            <h1>${getTableName(qrTable)}</h1>
-            <div class="qr-container">
-              <div id="qrcode"></div>
-            </div>
-            <div class="info">
-              <p>Capacidade: ${getTableCapacity(qrTable)} pessoas</p>
-              <p>Escaneie o QR code para fazer seu pedido</p>
+            <div class="qr-wrapper">
+              ${showTableName ? `<h1 class="table-name">${getTableName(qrTable)}</h1>` : ''}
+              <div class="qr-container">
+                <div id="qrcode"></div>
+              </div>
+              <div class="info">
+                ${showCapacity ? `<p class="capacity">Capacidade: ${getTableCapacity(qrTable)} pessoas</p>` : ''}
+                ${showInstructions ? `<p class="instructions">Escaneie o QR code para fazer seu pedido</p>` : ''}
+              </div>
             </div>
             <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
             <script>
               const qr = qrcode(0, 'M')
               qr.addData('${window.location.origin}/r/${qrTable.qrCode || qrTable.id}')
               qr.make()
-              document.getElementById('qrcode').innerHTML = qr.createImgTag(4)
-              setTimeout(() => window.print(), 100)
+              document.getElementById('qrcode').innerHTML = qr.createImgTag(${qrModuleSize})
+              setTimeout(() => window.print(), 300)
             </script>
           </body>
         </html>
       `)
       printWindow.document.close()
     }
+    setQrTable(null)
   }
 
   const handleStatusChange = async (tableId: string, newStatus: 'vacant' | 'occupied' | 'reserved') => {
@@ -386,6 +455,7 @@ export default function TablesPage() {
           title="Mesas e QR Codes"
           description="Gerencie mesas e códigos QR para pedidos presenciais"
         >
+          {canCreate && (
           <Dialog>
             <DialogTrigger asChild>
               <DashboardHeaderButton>
@@ -448,6 +518,7 @@ export default function TablesPage() {
               </Form>
             </DialogContent>
           </Dialog>
+          )}
         </DashboardHeader>
       </div>
 
@@ -565,7 +636,8 @@ export default function TablesPage() {
                         Imprimir QR Code
                       </Button>
                       
-                      {/* Button com submenu */}
+                      {/* Button com submenu - só aparece se pode editar */}
+                      {canEdit && (
                       <div className="relative">
                         <Button
                           variant="ghost"
@@ -620,7 +692,9 @@ export default function TablesPage() {
                           )}
                         </AnimatePresence>
                       </div>
+                      )}
                       
+                      {canEdit && (
                       <Button
                         variant="ghost"
                         className="w-full justify-start px-4 py-3 text-left hover:bg-slate-50"
@@ -629,8 +703,9 @@ export default function TablesPage() {
                         <Edit className="h-4 w-4 mr-3" />
                         Editar Mesa
                       </Button>
+                      )}
                       
-                      
+                      {canDelete && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button
@@ -659,6 +734,7 @@ export default function TablesPage() {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -751,40 +827,145 @@ export default function TablesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog para mostrar QR Code */}
+      {/* Dialog para mostrar QR Code com Preview A4 */}
       <Dialog open={!!qrTable} onOpenChange={(open) => !open && setQrTable(null)}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{qrTable ? getTableName(qrTable) : 'Mesa'}</DialogTitle>
+            <DialogTitle>Imprimir QR Code - {qrTable ? getTableName(qrTable) : 'Mesa'}</DialogTitle>
           </DialogHeader>
           
           {qrTable && (
-            <div className="flex flex-col items-center space-y-4">
-              <QRCodeSVG
-                value={`${window.location.origin}/r/${qrTable.qrCode || qrTable.id}`}
-                size={200}
-                level="M"
-                includeMargin={true}
-              />
-              <div className="text-center">
-                <p className="text-sm text-gray-600">
-                  Capacidade: {qrTable ? getTableCapacity(qrTable) : 4} pessoas
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Escaneie o QR code para fazer seu pedido
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Controles */}
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Tamanho do QR Code
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="50"
+                      max="200"
+                      value={qrSize}
+                      onChange={(e) => setQrSize(Number(e.target.value))}
+                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-slate-600"
+                    />
+                    <span className="text-sm font-medium text-gray-600 min-w-[60px]">
+                      {qrSize}mm
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Pequeno</span>
+                    <span>Grande</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-gray-700">Exibir no QR Code</label>
+                  
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showTableName}
+                      onChange={(e) => setShowTableName(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-slate-600 focus:ring-slate-500"
+                    />
+                    <span className="text-sm text-gray-600">Nome da mesa</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showCapacity}
+                      onChange={(e) => setShowCapacity(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-slate-600 focus:ring-slate-500"
+                    />
+                    <span className="text-sm text-gray-600">Capacidade</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showInstructions}
+                      onChange={(e) => setShowInstructions(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-slate-600 focus:ring-slate-500"
+                    />
+                    <span className="text-sm text-gray-600">Instruções</span>
+                  </label>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <p className="text-xs text-gray-500">
+                    <strong>Dica:</strong> Para mesas em locais com pouca luz, use um tamanho maior. 
+                    O QR code será impresso centralizado em uma folha A4.
+                  </p>
+                </div>
+              </div>
+
+              {/* Preview A4 */}
+              <div className="flex flex-col items-center">
+                <p className="text-sm font-medium text-gray-700 mb-2">Pré-visualização (A4)</p>
+                <div 
+                  className="bg-white border-2 border-gray-200 rounded shadow-inner flex flex-col items-center justify-center relative"
+                  style={{ 
+                    width: '210px', 
+                    height: '297px',
+                    padding: '20px'
+                  }}
+                >
+                  {/* Simulação do conteúdo na folha A4 */}
+                  <div className="flex flex-col items-center gap-2">
+                    {showTableName && (
+                      <p className="font-bold text-gray-900" style={{ fontSize: `${Math.max(8, qrSize / 15)}px` }}>
+                        {getTableName(qrTable)}
+                      </p>
+                    )}
+                    <div 
+                      className="bg-gray-100 border border-gray-300 rounded flex items-center justify-center"
+                      style={{ 
+                        width: `${qrSize * 0.8}px`, 
+                        height: `${qrSize * 0.8}px`,
+                        maxWidth: '150px',
+                        maxHeight: '150px'
+                      }}
+                    >
+                      <QRCodeSVG
+                        value={`${window.location.origin}/r/${qrTable.qrCode || qrTable.id}`}
+                        size={Math.min(qrSize * 0.7, 140)}
+                        level="M"
+                        includeMargin={false}
+                      />
+                    </div>
+                    {showCapacity && (
+                      <p className="text-gray-600" style={{ fontSize: `${Math.max(6, qrSize / 20)}px` }}>
+                        {getTableCapacity(qrTable)} pessoas
+                      </p>
+                    )}
+                    {showInstructions && (
+                      <p className="text-gray-500 text-center" style={{ fontSize: `${Math.max(5, qrSize / 25)}px` }}>
+                        Escaneie para pedir
+                      </p>
+                    )}
+                  </div>
+                  
+                  {/* Indicador de escala */}
+                  <div className="absolute bottom-2 right-2 text-[8px] text-gray-400">
+                    Escala: 1:3
+                  </div>
+                </div>
               </div>
             </div>
           )}
           
-          <DialogFooter>
-            <Button onClick={handlePrintQR} variant="outline">
+          <DialogFooter className="mt-4">
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button onClick={handlePrintQR} className="bg-slate-700 hover:bg-slate-800">
               <Printer className="h-4 w-4 mr-2" />
               Imprimir
             </Button>
-            <DialogClose asChild>
-              <Button>Fechar</Button>
-            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>

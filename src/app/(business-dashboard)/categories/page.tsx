@@ -43,6 +43,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { useBusinessId } from '@/stores/business-store'
+import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { notify } from '@/lib/notifications/notify'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
@@ -73,10 +74,12 @@ const StatusBadge = ({ isActive }: { isActive: boolean }) => (
   </Badge>
 )
 
-const ExpandedCategoryRow = ({ category, onEdit, onDelete }: {
+const ExpandedCategoryRow = ({ category, onEdit, onDelete, canEdit, canDelete }: {
   category: ExtendedCategory
   onEdit: (category: ExtendedCategory) => void
   onDelete: (category: ExtendedCategory) => void
+  canEdit: boolean
+  canDelete: boolean
 }) => (
   <TableRow>
     <TableCell colSpan={6} className="p-0">
@@ -105,25 +108,29 @@ const ExpandedCategoryRow = ({ category, onEdit, onDelete }: {
           )}
           
           <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onEdit(category)}
-              className="flex items-center gap-2"
-            >
-              <Edit className="h-4 w-4" />
-              Editar
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onDelete(category)}
-              className="flex items-center gap-2 text-red-600 hover:text-red-700"
-              disabled={category._count?.products ? category._count.products > 0 : false}
-            >
-              <Trash2 className="h-4 w-4" />
-              Excluir
-            </Button>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onEdit(category)}
+                className="flex items-center gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Editar
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onDelete(category)}
+                className="flex items-center gap-2 text-red-600 hover:text-red-700"
+                disabled={category._count?.products ? category._count.products > 0 : false}
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -133,6 +140,13 @@ const ExpandedCategoryRow = ({ category, onEdit, onDelete }: {
 
 export default function CategoriesPage() {
   const businessId = useBusinessId()
+  const { hasPermission } = useBusinessContext()
+  
+  // Verificar permissões (categorias usa mesma permissão de products)
+  const canCreate = hasPermission('products', 'create') || hasPermission('products', 'manage')
+  const canEdit = hasPermission('products', 'update') || hasPermission('products', 'manage')
+  const canDelete = hasPermission('products', 'delete') || hasPermission('products', 'manage')
+  
   const [categories, setCategories] = useState<ExtendedCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -246,18 +260,20 @@ export default function CategoriesPage() {
       {/* Header */}
       <DashboardHeader
         title="Categorias"
-        description="Organize seus produtos em categorias para facilitar a navegação"
+        description={canCreate ? "Organize seus produtos em categorias para facilitar a navegação" : "Visualize as categorias de produtos"}
       >
-        <CategoryFormDialog
-          businessId={businessId || ''}
-          categories={categories}
-          onSuccess={fetchCategories}
-        >
-          <DashboardHeaderButton>
-            <Plus className="h-4 w-4 mr-2" />
-            Nova Categoria
-          </DashboardHeaderButton>
-        </CategoryFormDialog>
+        {canCreate && (
+          <CategoryFormDialog
+            businessId={businessId || ''}
+            categories={categories}
+            onSuccess={fetchCategories}
+          >
+            <DashboardHeaderButton>
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Categoria
+            </DashboardHeaderButton>
+          </CategoryFormDialog>
+        )}
       </DashboardHeader>
 
       {/* Filters and Search */}
@@ -391,6 +407,7 @@ export default function CategoriesPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            {canEdit && (
                             <CategoryFormDialog
                               businessId={businessId || ''}
                               categories={categories}
@@ -409,6 +426,8 @@ export default function CategoriesPage() {
                                 <Edit className="h-4 w-4" />
                               </Button>
                             </CategoryFormDialog>
+                            )}
+                            {canDelete && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -418,6 +437,7 @@ export default function CategoriesPage() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -427,6 +447,8 @@ export default function CategoriesPage() {
                           category={category}
                           onEdit={() => {/* Edição será feita pelo CategoryFormDialog */}}
                           onDelete={setDeletingCategory}
+                          canEdit={canEdit}
+                          canDelete={canDelete}
                         />
                       )}
                     </React.Fragment>

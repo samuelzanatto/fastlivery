@@ -71,11 +71,18 @@ interface Role {
 }
 
 export default function UsersPage() {
-  const { business, permissions } = useBusinessContext()
+  const { business, permissions, hasPermission } = useBusinessContext()
   const businessId = business?.id
   const { canManageEmployees, isOwner } = permissions
   const { data: session } = useSession()
   const canManage = canManageEmployees
+  
+  // Permissões granulares
+  const canView = hasPermission('employees', 'view') || hasPermission('employees', 'manage') || isOwner || canManage
+  const canCreate = hasPermission('employees', 'create') || hasPermission('employees', 'manage') || isOwner || canManage
+  const canEdit = hasPermission('employees', 'update') || hasPermission('employees', 'manage') || isOwner || canManage
+  const canDelete = hasPermission('employees', 'delete') || hasPermission('employees', 'manage') || isOwner || canManage
+  
   const [employees, setEmployees] = useState<Employee[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
@@ -258,7 +265,7 @@ export default function UsersPage() {
     return matchesSearch && matchesRole && matchesStatus
   })
 
-  if (!isOwner && !canManage) {
+  if (!canView) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
@@ -275,8 +282,9 @@ export default function UsersPage() {
       {/* Header */}
       <DashboardHeader
         title="Gerenciar Usuários"
-        description="Gerencie funcionários e suas permissões"
+        description={canCreate ? "Gerencie funcionários e suas permissões" : "Visualize os funcionários da empresa"}
       >
+        {canCreate && (
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
             <DashboardHeaderButton>
@@ -359,8 +367,10 @@ export default function UsersPage() {
             </form>
           </DialogContent>
         </Dialog>
+        )}
 
         {/* Dialog OTP Verification */}
+        {canCreate && (
         <EmailOtpVerification
           open={showOtpDialog}
           email={pendingEmployeeEmail}
@@ -381,6 +391,7 @@ export default function UsersPage() {
           verifyEndpoint="/api/employees/verify-otp"
           verificationType="employee"
         />
+        )}
       </DashboardHeader>
 
       {/* Filters and Search */}
@@ -525,6 +536,7 @@ export default function UsersPage() {
                       </TableCell>
                       
                       <TableCell>
+                        {(canEdit || canDelete) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">
@@ -532,14 +544,16 @@ export default function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {canEdit && (
                             <DropdownMenuItem
                               onClick={() => setEditingEmployee(employee)}
                             >
                               <Edit2 className="h-4 w-4 mr-2" />
                               Editar
                             </DropdownMenuItem>
+                            )}
                             
-                            {!employee.user.emailVerified && (
+                            {canEdit && !employee.user.emailVerified && (
                               <DropdownMenuItem
                                 onClick={() => {
                                   setPendingEmployeeEmail(employee.user.email)
@@ -551,6 +565,7 @@ export default function UsersPage() {
                               </DropdownMenuItem>
                             )}
                             
+                            {canEdit && (
                             <DropdownMenuItem
                               onClick={() => handleUpdateEmployee(employee.id, { isActive: !employee.isActive })}
                             >
@@ -566,7 +581,9 @@ export default function UsersPage() {
                                 </>
                               )}
                             </DropdownMenuItem>
+                            )}
                             
+                            {canDelete && (
                             <DropdownMenuItem
                               onClick={() => handleDeactivateEmployee(employee.id)}
                               className="text-red-600"
@@ -574,8 +591,10 @@ export default function UsersPage() {
                               <Trash2 className="h-4 w-4 mr-2" />
                               Remover
                             </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

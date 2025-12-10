@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/database/prisma'
 import { getCachedSession } from '@/lib/security/session-cache'
+import { findBusinessForUser } from '@/lib/actions/auth-helpers'
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,9 +15,19 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Buscar empresa do usuário
-    const business = await prisma.business.findFirst({
-      where: { ownerId: session.user.id },
+    // Buscar empresa do usuário (dono ou funcionário)
+    const businessData = await findBusinessForUser(session.user.id)
+
+    if (!businessData) {
+      return NextResponse.json(
+        { error: 'Empresa não encontrada' },
+        { status: 404 }
+      )
+    }
+
+    // Buscar dados completos da empresa
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id },
       select: {
         id: true,
         name: true,

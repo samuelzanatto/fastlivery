@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/database/prisma'
 import { auth } from '@/lib/auth/auth'
+import { findBusinessForUser } from '@/lib/actions/auth-helpers'
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,9 +43,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Buscar negócio do usuário através do relacionamento
-    const business = await prisma.business.findFirst({
-      where: { ownerId: session.user.id }
+    // Buscar negócio do usuário (dono ou funcionário com permissão)
+    const businessData = await findBusinessForUser(session.user.id, {
+      requiredPermission: { resource: 'settings', action: 'update' }
+    })
+
+    if (!businessData) {
+      return NextResponse.json(
+        { error: 'Empresa não encontrada ou sem permissão' },
+        { status: 404 }
+      )
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id }
     })
 
     if (!business) {

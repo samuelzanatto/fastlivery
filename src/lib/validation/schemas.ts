@@ -139,17 +139,6 @@ export const updateTableSchema = z.object({
 // SCHEMAS DE AUTENTICAÇÃO
 // ==========================================
 
-export const signupSchema = z.object({
-  email: z.string().email('Email inválido'),
-  password: z.string()
-    .min(8, 'Senha deve ter pelo menos 8 caracteres')
-    .max(128, 'Senha muito longa')
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, 
-           'Senha deve conter pelo menos: 1 minúscula, 1 maiúscula, 1 número e 1 símbolo'),
-  name: sanitizedString(2, 100),
-  phone: brazilianPhone().optional()
-})
-
 export const loginSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(1, 'Senha é obrigatória')
@@ -230,7 +219,6 @@ export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>
 export type CreateRoleInput = z.infer<typeof createRoleSchema>
 export type CreateTableInput = z.infer<typeof createTableSchema>
 export type UpdateTableInput = z.infer<typeof updateTableSchema>
-export type SignupInput = z.infer<typeof signupSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type OtpInput = z.infer<typeof otpSchema>
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>

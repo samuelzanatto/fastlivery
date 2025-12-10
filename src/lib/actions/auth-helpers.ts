@@ -32,6 +32,16 @@ export interface UserBusiness {
 export interface BusinessContext {
   user: AuthenticatedUser
   business: UserBusiness
+  isEmployee?: boolean
+  employeeRole?: {
+    id: string
+    name: string
+    permissions: Array<{
+      id: string
+      resource: string
+      action: string
+    }>
+  } | null
 }
 
 /**
@@ -76,11 +86,13 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser> {
 
 /**
  * Helper para obter negócio do usuário autenticado
+ * Suporta tanto donos quanto funcionários
  */
 export async function getAuthenticatedUserBusiness(): Promise<BusinessContext> {
   const user = await getAuthenticatedUser()
 
-  const business = await prisma.business.findFirst({
+  // Primeiro, tentar encontrar como dono do negócio
+  let business = await prisma.business.findFirst({
     where: { ownerId: user.id },
     select: { 
       id: true,
@@ -97,11 +109,58 @@ export async function getAuthenticatedUserBusiness(): Promise<BusinessContext> {
     }
   })
 
+  let isEmployee = false
+  let employeeRole = null
+
+  // Se não é dono, verificar se é funcionário
+  if (!business) {
+    const employeeProfile = await prisma.employeeProfile.findFirst({
+      where: {
+        userId: user.id,
+        isActive: true
+      },
+      include: {
+        business: {
+          select: { 
+            id: true,
+            name: true,
+            slug: true,
+            avatar: true,
+            isOpen: true,
+            openingHours: true,
+            deliveryFee: true,
+            minimumOrder: true,
+            acceptsDelivery: true,
+            acceptsPickup: true,
+            acceptsDineIn: true
+          }
+        },
+        role: {
+          include: {
+            permissions: {
+              select: {
+                id: true,
+                resource: true,
+                action: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (employeeProfile) {
+      business = employeeProfile.business
+      isEmployee = true
+      employeeRole = employeeProfile.role
+    }
+  }
+
   if (!business) {
     throw new BusinessNotFoundError()
   }
 
-  return { user, business }
+  return { user, business, isEmployee, employeeRole }
 }
 
 /**
@@ -175,6 +234,109 @@ export function withBusiness<T extends unknown[], R>(
       return await action(businessData, ...args)
     } catch (error) {
       return handleActionError(error) as ActionResult<R>
+    }
+  }
+}
+
+/**
+ * Helper para buscar negócio do usuário (dono ou funcionário)
+ * Útil para APIs e rotas que precisam verificar acesso
+ */
+export async function findBusinessForUser(userId: string, options?: {
+  requiredPermission?: { resource: string; action: string }
+}): Promise<{
+  business: UserBusiness & { id: string }
+  isEmployee: boolean
+  employeeRole?: {
+    id: string
+    name: string
+    permissions: Array<{ resource: string; action: string }>
+  } | null
+} | null> {
+  // Primeiro, tentar encontrar como dono
+  const ownedBusiness = await prisma.business.findFirst({
+    where: { ownerId: userId },
+    select: { 
+      id: true,
+      name: true,
+      slug: true,
+      avatar: true,
+      isOpen: true,
+      openingHours: true,
+      deliveryFee: true,
+      minimumOrder: true,
+      acceptsDelivery: true,
+      acceptsPickup: true,
+      acceptsDineIn: true
+    }
+  })
+
+  if (ownedBusiness) {
+    return {
+      business: ownedBusiness,
+      isEmployee: false,
+      employeeRole: null
+    }
+  }
+
+  // Se não é dono, verificar se é funcionário
+  const employeeProfile = await prisma.employeeProfile.findFirst({
+    where: {
+      userId: userId,
+      isActive: true
+    },
+    include: {
+      business: {
+        select: { 
+          id: true,
+          name: true,
+          slug: true,
+          avatar: true,
+          isOpen: true,
+          openingHours: true,
+          deliveryFee: true,
+          minimumOrder: true,
+          acceptsDelivery: true,
+          acceptsPickup: true,
+          acceptsDineIn: true
+        }
+      },
+      role: {
+        include: {
+          permissions: {
+            select: {
+              resource: true,
+              action: true
+            }
+          }
+        }
+      }
+    }
+  })
+
+  if (!employeeProfile) {
+    return null
+  }
+
+  // Se requer permissão específica, verificar
+  if (options?.requiredPermission) {
+    const { resource, action } = options.requiredPermission
+    const hasPermission = employeeProfile.role.permissions.some(
+      p => (p.resource === resource || p.resource === '*') && 
+           (p.action === action || p.action === 'manage' || p.action === '*')
+    )
+    if (!hasPermission) {
+      return null
+    }
+  }
+
+  return {
+    business: employeeProfile.business,
+    isEmployee: true,
+    employeeRole: {
+      id: employeeProfile.role.id,
+      name: employeeProfile.role.name,
+      permissions: employeeProfile.role.permissions
     }
   }
 }

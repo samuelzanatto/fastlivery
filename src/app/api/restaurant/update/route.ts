@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/auth'
 import { prisma } from '@/lib/database/prisma'
 import { slugify } from '@/lib/utils/formatters'
 import { computeIsOpenNow, parseOpeningHours } from '@/lib/utils/business-hours'
+import { findBusinessForUser } from '@/lib/actions/auth-helpers'
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -13,9 +14,17 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json()
 
-    // Encontrar empresa do dono
-    const business = await prisma.business.findFirst({
-      where: { ownerId: session.user.id },
+    // Encontrar empresa do usuário (dono ou funcionário)
+    const businessData = await findBusinessForUser(session.user.id, {
+      requiredPermission: { resource: 'settings', action: 'update' }
+    })
+
+    if (!businessData) {
+      return NextResponse.json({ error: 'Empresa não encontrada ou sem permissão' }, { status: 404 })
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id }
     })
 
     if (!business) {

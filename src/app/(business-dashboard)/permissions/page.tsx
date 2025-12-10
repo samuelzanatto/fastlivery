@@ -44,20 +44,21 @@ import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { getRoles, createRole, updateRole, deleteRole, type RoleWithPermissions } from '@/actions/roles'
 import { notify } from '@/lib/notifications/notify'
 
-// Recursos disponíveis no sistema
+// Recursos disponíveis no sistema (devem corresponder aos usados na sidebar)
 const AVAILABLE_RESOURCES = [
   { id: 'dashboard', name: 'Dashboard', description: 'Acesso ao painel principal' },
   { id: 'orders', name: 'Pedidos', description: 'Gerenciar pedidos' },
   { id: 'products', name: 'Produtos', description: 'Gerenciar produtos e categorias' },
-  { id: 'analytics', name: 'Relatórios', description: 'Acessar relatórios e analytics' },
+  { id: 'reports', name: 'Relatórios', description: 'Acessar relatórios e analytics' },
   { id: 'tables', name: 'Mesas', description: 'Gerenciar mesas' },
-  { id: 'users', name: 'Usuários', description: 'Gerenciar funcionários' },
+  { id: 'employees', name: 'Funcionários', description: 'Gerenciar funcionários' },
+  { id: 'permissions', name: 'Permissões', description: 'Gerenciar cargos e permissões' },
   { id: 'settings', name: 'Configurações', description: 'Configurações da empresa' },
 ]
 
-// Ações disponíveis
+// Ações disponíveis (devem corresponder às usadas na verificação de permissões)
 const AVAILABLE_ACTIONS = [
-  { id: 'read', name: 'Visualizar', description: 'Pode visualizar/listar' },
+  { id: 'view', name: 'Visualizar', description: 'Pode visualizar/listar' },
   { id: 'create', name: 'Criar', description: 'Pode criar novos registros' },
   { id: 'update', name: 'Editar', description: 'Pode editar registros existentes' },
   { id: 'delete', name: 'Excluir', description: 'Pode excluir registros' },
@@ -197,7 +198,7 @@ const RoleFormDialog = React.memo(function RoleFormDialog({
 })
 
 export default function PermissionsPage() {
-  const { business, permissions } = useBusinessContext()
+  const { business, permissions, isEmployee, employeeRole } = useBusinessContext()
   const businessId = business?.id
   const { isOwner, canManageEmployees } = permissions
   const canManage = canManageEmployees
@@ -206,6 +207,11 @@ export default function PermissionsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingRole, setEditingRole] = useState<RoleWithPermissions | null>(null)
+
+  // Verifica se é o próprio cargo do funcionário (não pode editar/excluir)
+  const isOwnRole = (roleId: string) => {
+    return isEmployee && employeeRole?.id === roleId
+  }
 
   // Form states
   const [formData, setFormData] = useState({
@@ -488,17 +494,20 @@ export default function PermissionsPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={() => openEditDialog(role)}
+                            disabled={isOwnRole(role.id)}
+                            className={isOwnRole(role.id) ? "opacity-50 cursor-not-allowed" : ""}
                           >
                             <Edit2 className="h-4 w-4 mr-2" />
-                            Editar
+                            {isOwnRole(role.id) ? "Seu cargo (não editável)" : "Editar"}
                           </DropdownMenuItem>
                           
                           <DropdownMenuItem
                             onClick={() => handleDeleteRole(role.id)}
-                            className="text-red-600"
+                            className={isOwnRole(role.id) ? "opacity-50 cursor-not-allowed" : "text-red-600"}
+                            disabled={isOwnRole(role.id)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
-                            Excluir
+                            {isOwnRole(role.id) ? "Seu cargo (não excluível)" : "Excluir"}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

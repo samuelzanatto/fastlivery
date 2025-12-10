@@ -41,6 +41,7 @@ import {
   Settings
 } from 'lucide-react'
 import { useBusinessId } from '@/stores/business-store'
+import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { notify } from '@/lib/notifications/notify'
 import { cn } from '@/lib/utils'
 import { deleteAdditional, getAdditionals } from '@/actions/additionals'
@@ -95,6 +96,12 @@ export function AdditionalsClientPage({ initialData, initialPage, initialLimit, 
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
+  
+  // Permissões de adicionais (usa permissão de products)
+  const { hasPermission } = useBusinessContext()
+  const canCreate = hasPermission('products', 'create') || hasPermission('products', 'manage')
+  const canEdit = hasPermission('products', 'update') || hasPermission('products', 'manage')
+  const canDelete = hasPermission('products', 'delete') || hasPermission('products', 'manage')
   
   const [data, setData] = useState(initialData)
   const [searchTerm, setSearchTerm] = useState(initialSearch)
@@ -197,6 +204,7 @@ export function AdditionalsClientPage({ initialData, initialPage, initialLimit, 
         title="Adicionais"
         description="Gerencie todos os adicionais do seu restaurante"
       >
+        {canCreate && (
         <AdditionalFormDialog
           businessId={businessId || ''}
           onSuccess={refreshData}
@@ -206,6 +214,7 @@ export function AdditionalsClientPage({ initialData, initialPage, initialLimit, 
             Novo Adicional
           </DashboardHeaderButton>
         </AdditionalFormDialog>
+        )}
       </DashboardHeader>
 
       {/* Filters and Search */}
@@ -321,6 +330,7 @@ export function AdditionalsClientPage({ initialData, initialPage, initialLimit, 
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
+                          {canEdit && (
                           <AdditionalFormDialog
                             businessId={businessId || ''}
                             additional={additional}
@@ -330,6 +340,8 @@ export function AdditionalsClientPage({ initialData, initialPage, initialLimit, 
                               <Edit className="h-4 w-4" />
                             </Button>
                           </AdditionalFormDialog>
+                          )}
+                          {canDelete && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -338,6 +350,7 @@ export function AdditionalsClientPage({ initialData, initialPage, initialLimit, 
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

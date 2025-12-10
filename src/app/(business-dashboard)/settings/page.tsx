@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { useSession } from '@/lib/auth/auth-client'
 import { useBusinessFull, useBusinessId, useBusinessStore } from '@/stores/business-store'
+import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { useAutoOpenClose } from '@/hooks/business/use-auto-open-close'
 import { useRouter } from 'next/navigation'
 import { notify } from '@/lib/notifications/notify'
@@ -35,6 +36,10 @@ export default function SettingsPage() {
   const business = useBusinessFull()
   const businessId = useBusinessId()
   const router = useRouter()
+  const { hasPermission, permissions } = useBusinessContext()
+  
+  // Verificar se pode editar configurações
+  const canEdit = hasPermission('settings', 'update') || hasPermission('settings', 'manage')
 
   const [businessSettings, setBusinessSettings] = useState({
     id: '',
@@ -259,7 +264,7 @@ export default function SettingsPage() {
       {/* Header */}
       <DashboardHeader
         title="Configurações"
-        description="Gerencie as configurações da sua empresa"
+        description={canEdit ? "Gerencie as configurações da sua empresa" : "Visualize as configurações da empresa (somente leitura)"}
       >
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
@@ -267,19 +272,23 @@ export default function SettingsPage() {
             <span className="text-sm font-medium">
               Empresa {businessSettings.isOpen ? 'Aberto' : 'Fechado'}
             </span>
-            <Switch
-              checked={businessSettings.isOpen}
-              onCheckedChange={handleToggleOpen}
-            />
+            {canEdit && (
+              <Switch
+                checked={businessSettings.isOpen}
+                onCheckedChange={handleToggleOpen}
+              />
+            )}
           </div>
           
-          <DashboardHeaderButton 
-            onClick={handleSave} 
-            disabled={loading}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {loading ? 'Salvando...' : 'Salvar Alterações'}
-          </DashboardHeaderButton>
+          {canEdit && (
+            <DashboardHeaderButton 
+              onClick={handleSave} 
+              disabled={loading}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {loading ? 'Salvando...' : 'Salvar Alterações'}
+            </DashboardHeaderButton>
+          )}
         </div>
       </DashboardHeader>
 
@@ -324,39 +333,41 @@ export default function SettingsPage() {
                       {businessSettings.name?.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="space-y-2 space-x-2">
-                    <ImageUploadDialog
-                      entityId={businessSettings.id}
-                      imageType={ImageType.BUSINESS_LOGO}
-                      onImageSelect={async (image) => {
-                        setBusinessSettings(prev => ({
-                          ...prev,
-                          avatar: image.url
-                        }))
-                        try {
-                          const result = await updateBusiness({ avatar: image.url })
-                          if (result.success) {
-                            notify('success', 'Logo atualizada com sucesso!')
-                          } else {
-                            throw new Error(result.error)
+                  {canEdit && (
+                    <div className="space-y-2 space-x-2">
+                      <ImageUploadDialog
+                        entityId={businessSettings.id}
+                        imageType={ImageType.BUSINESS_LOGO}
+                        onImageSelect={async (image) => {
+                          setBusinessSettings(prev => ({
+                            ...prev,
+                            avatar: image.url
+                          }))
+                          try {
+                            const result = await updateBusiness({ avatar: image.url })
+                            if (result.success) {
+                              notify('success', 'Logo atualizada com sucesso!')
+                            } else {
+                              throw new Error(result.error)
+                            }
+                          } catch (error) {
+                            notify('error', 'Erro ao atualizar logo', { 
+                              description: error instanceof Error ? error.message : 'Erro desconhecido' 
+                            })
                           }
-                        } catch (error) {
-                          notify('error', 'Erro ao atualizar logo', { 
-                            description: error instanceof Error ? error.message : 'Erro desconhecido' 
-                          })
-                        }
-                      }}
-                      title="Selecionar Logo da Empresa"
-                      description="Escolha uma imagem para representar sua empresa"
-                    >
-                      <Button variant="outline" size="sm">
-                        Editar Logo
+                        }}
+                        title="Selecionar Logo da Empresa"
+                        description="Escolha uma imagem para representar sua empresa"
+                      >
+                        <Button variant="outline" size="sm">
+                          Editar Logo
+                        </Button>
+                      </ImageUploadDialog>
+                      <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                        Remover
                       </Button>
-                    </ImageUploadDialog>
-                    <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-                      Remover
-                    </Button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -379,60 +390,62 @@ export default function SettingsPage() {
                       <p className="text-gray-500 text-sm">Nenhum banner adicionado</p>
                     </div>
                   )}
-                  <div className="space-x-2">
-                    <ImageUploadDialog
-                      entityId={businessSettings.id}
-                      imageType={ImageType.BUSINESS_BANNER}
-                      onImageSelect={async (image) => {
-                        setBusinessSettings(prev => ({
-                          ...prev,
-                          banner: image.url
-                        }))
-                        try {
-                          const result = await updateBusiness({ banner: image.url })
-                          if (result.success) {
-                            notify('success', 'Banner atualizado com sucesso!')
-                          } else {
-                            throw new Error(result.error)
-                          }
-                        } catch (error) {
-                          notify('error', 'Erro ao atualizar banner', { 
-                            description: error instanceof Error ? error.message : 'Erro desconhecido' 
-                          })
-                        }
-                      }}
-                      title="Selecionar Banner da Empresa"
-                      description="Escolha uma imagem de banner para sua empresa (recomendado: 1200x600px)"
-                    >
-                      <Button variant="outline" size="sm">
-                        {businessSettings.banner ? 'Alterar Banner' : 'Adicionar Banner'}
-                      </Button>
-                    </ImageUploadDialog>
-                    {businessSettings.banner && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-red-600 hover:text-red-700"
-                        onClick={async () => {
-                          setBusinessSettings(prev => ({ ...prev, banner: '' }))
+                  {canEdit && (
+                    <div className="space-x-2">
+                      <ImageUploadDialog
+                        entityId={businessSettings.id}
+                        imageType={ImageType.BUSINESS_BANNER}
+                        onImageSelect={async (image) => {
+                          setBusinessSettings(prev => ({
+                            ...prev,
+                            banner: image.url
+                          }))
                           try {
-                            const result = await updateBusiness({ banner: '' })
+                            const result = await updateBusiness({ banner: image.url })
                             if (result.success) {
-                              notify('success', 'Banner removido com sucesso!')
+                              notify('success', 'Banner atualizado com sucesso!')
                             } else {
                               throw new Error(result.error)
                             }
                           } catch (error) {
-                            notify('error', 'Erro ao remover banner', { 
+                            notify('error', 'Erro ao atualizar banner', { 
                               description: error instanceof Error ? error.message : 'Erro desconhecido' 
                             })
                           }
                         }}
+                        title="Selecionar Banner da Empresa"
+                        description="Escolha uma imagem de banner para sua empresa (recomendado: 1200x600px)"
                       >
-                        Remover Banner
-                      </Button>
-                    )}
-                  </div>
+                        <Button variant="outline" size="sm">
+                          {businessSettings.banner ? 'Alterar Banner' : 'Adicionar Banner'}
+                        </Button>
+                      </ImageUploadDialog>
+                      {businessSettings.banner && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-red-600 hover:text-red-700"
+                          onClick={async () => {
+                            setBusinessSettings(prev => ({ ...prev, banner: '' }))
+                            try {
+                              const result = await updateBusiness({ banner: '' })
+                              if (result.success) {
+                                notify('success', 'Banner removido com sucesso!')
+                              } else {
+                                throw new Error(result.error)
+                              }
+                            } catch (error) {
+                              notify('error', 'Erro ao remover banner', { 
+                                description: error instanceof Error ? error.message : 'Erro desconhecido' 
+                              })
+                            }
+                          }}
+                        >
+                          Remover Banner
+                        </Button>
+                      )}
+                    </div>
+                  )}
                   <p className="text-xs text-gray-500">
                     Recomendamos uma imagem no formato 1200x600 pixels para melhor qualidade
                   </p>
@@ -450,6 +463,8 @@ export default function SettingsPage() {
                       onChange={(e) => setBusinessSettings(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="Digite o nome da empresa"
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      readOnly={!canEdit}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -465,6 +480,8 @@ export default function SettingsPage() {
                         onChange={(e) => setBusinessSettings(prev => ({ ...prev, slug: slugify(e.target.value) }))}
                         className="rounded-l-none border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                         placeholder="minha-pizzaria"
+                        readOnly={!canEdit}
+                        disabled={!canEdit}
                       />
                     </div>
                   </div>
@@ -479,6 +496,8 @@ export default function SettingsPage() {
                     onChange={(e) => setBusinessSettings(prev => ({ ...prev, phone: e.target.value }))}
                     placeholder="(11) 99999-9999"
                     className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    readOnly={!canEdit}
+                    disabled={!canEdit}
                   />
                 </div>
 
@@ -491,6 +510,8 @@ export default function SettingsPage() {
                     placeholder="Descreva sua loja e o que a torna especial..."
                     rows={4}
                     className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    readOnly={!canEdit}
+                    disabled={!canEdit}
                   />
                   <p className="text-sm text-gray-500">{businessSettings.description?.length || 0} caracteres restantes</p>
                 </div>
@@ -517,6 +538,7 @@ export default function SettingsPage() {
                   <Switch
                     checked={businessSettings.acceptsDelivery}
                     onCheckedChange={(checked) => setBusinessSettings(prev => ({ ...prev, acceptsDelivery: checked }))}
+                    disabled={!canEdit}
                   />
                 </div>
 
@@ -528,6 +550,7 @@ export default function SettingsPage() {
                   <Switch
                     checked={businessSettings.acceptsPickup}
                     onCheckedChange={(checked) => setBusinessSettings(prev => ({ ...prev, acceptsPickup: checked }))}
+                    disabled={!canEdit}
                   />
                 </div>
               </div>
@@ -547,6 +570,7 @@ export default function SettingsPage() {
                         onChange={(e) => setBusinessSettings(prev => ({ ...prev, deliveryTime: parseInt(e.target.value) || 0 }))}
                         placeholder="30"
                         className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        disabled={!canEdit}
                       />
                     </div>
                     <div className="space-y-2">
@@ -559,6 +583,7 @@ export default function SettingsPage() {
                         onChange={(e) => setBusinessSettings(prev => ({ ...prev, deliveryFee: parseFloat(e.target.value) || 0 }))}
                         placeholder="5.00"
                         className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        disabled={!canEdit}
                       />
                     </div>
                     <div className="space-y-2">
@@ -571,6 +596,7 @@ export default function SettingsPage() {
                         onChange={(e) => setBusinessSettings(prev => ({ ...prev, minimumOrder: parseFloat(e.target.value) || 0 }))}
                         placeholder="20.00"
                         className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        disabled={!canEdit}
                       />
                     </div>
                   </div>
@@ -602,7 +628,7 @@ export default function SettingsPage() {
                             ...prev,
                             [day]: { ...prev[day as keyof typeof prev], open: e.target.value }
                           }))}
-                          disabled={schedule.closed}
+                          disabled={schedule.closed || !canEdit}
                           className="w-32 border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
                         />
                         <span className="text-gray-500 text-sm">-</span>
@@ -613,7 +639,7 @@ export default function SettingsPage() {
                             ...prev,
                             [day]: { ...prev[day as keyof typeof prev], close: e.target.value }
                           }))}
-                          disabled={schedule.closed}
+                          disabled={schedule.closed || !canEdit}
                           className="w-32 border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
                         />
                       </div>
@@ -626,6 +652,7 @@ export default function SettingsPage() {
                           ...prev,
                           [day]: { ...prev[day as keyof typeof prev], closed: !checked }
                         }))}
+                        disabled={!canEdit}
                       />
                       <Label className="text-sm text-gray-600">Aberto</Label>
                     </div>
@@ -655,6 +682,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={payments.acceptsCash}
                       onCheckedChange={(checked) => setPayments(prev => ({ ...prev, acceptsCash: checked }))}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -666,6 +694,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={payments.acceptsCard}
                       onCheckedChange={(checked) => setPayments(prev => ({ ...prev, acceptsCard: checked }))}
+                      disabled={!canEdit}
                     />
                   </div>
 
@@ -677,6 +706,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={payments.acceptsPix}
                       onCheckedChange={(checked) => setPayments(prev => ({ ...prev, acceptsPix: checked }))}
+                      disabled={!canEdit}
                     />
                   </div>
                 </div>
@@ -700,6 +730,7 @@ export default function SettingsPage() {
                   <Switch
                     checked={notifications.newOrders}
                     onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, newOrders: checked }))}
+                    disabled={!canEdit}
                   />
                 </div>
 
@@ -711,6 +742,7 @@ export default function SettingsPage() {
                   <Switch
                     checked={notifications.lowStock}
                     onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, lowStock: checked }))}
+                    disabled={!canEdit}
                   />
                 </div>
               </div>

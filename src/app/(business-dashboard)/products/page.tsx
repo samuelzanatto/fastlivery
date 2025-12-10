@@ -45,6 +45,7 @@ import {
   Eye
 } from 'lucide-react'
 import { useBusinessId } from '@/stores/business-store'
+import { useBusinessContext } from '@/hooks/business/use-business-context'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
@@ -107,12 +108,14 @@ const CategoryBadge = ({ category }: { category: string }) => (
   </Badge>
 )
 
-const ExpandedProductRow = ({ product, categories, businessId, onDelete, onSuccess }: {
+const ExpandedProductRow = ({ product, categories, businessId, onDelete, onSuccess, canEdit, canDelete }: {
   product: Product
   categories: Category[]
   businessId: string
   onDelete: (product: Product) => void
   onSuccess: () => void
+  canEdit: boolean
+  canDelete: boolean
 }) => (
   <TableRow>
     <TableCell colSpan={6} className="p-0">
@@ -162,38 +165,42 @@ const ExpandedProductRow = ({ product, categories, businessId, onDelete, onSucce
                 Visualizar
               </Button>
             </ProductViewDialog>
-            <ProductFormDialog
-              businessId={businessId}
-              categories={categories}
-              product={{
-                id: product.id,
-                name: product.name,
-                description: product.description || undefined,
-                price: product.price,
-                categoryId: product.categoryId,
-                isAvailable: product.isAvailable,
-                image: product.image || undefined
-              }}
-              onSuccess={onSuccess}
-            >
+            {canEdit && (
+              <ProductFormDialog
+                businessId={businessId}
+                categories={categories}
+                product={{
+                  id: product.id,
+                  name: product.name,
+                  description: product.description || undefined,
+                  price: product.price,
+                  categoryId: product.categoryId,
+                  isAvailable: product.isAvailable,
+                  image: product.image || undefined
+                }}
+                onSuccess={onSuccess}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <Edit className="h-4 w-4" />
+                  Editar
+                </Button>
+              </ProductFormDialog>
+            )}
+            {canDelete && (
               <Button
                 variant="outline"
                 size="sm"
-                className="flex items-center gap-2"
+                onClick={() => onDelete(product)}
+                className="flex items-center gap-2 text-red-600 hover:text-red-700"
               >
-                <Edit className="h-4 w-4" />
-                Editar
+                <Trash2 className="h-4 w-4" />
+                Excluir
               </Button>
-            </ProductFormDialog>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onDelete(product)}
-              className="flex items-center gap-2 text-red-600 hover:text-red-700"
-            >
-              <Trash2 className="h-4 w-4" />
-              Excluir
-            </Button>
+            )}
           </div>
         </div>
       </div>
@@ -203,6 +210,13 @@ const ExpandedProductRow = ({ product, categories, businessId, onDelete, onSucce
 
 export default function ProductsPage() {
   const businessId = useBusinessId()
+  const { hasPermission } = useBusinessContext()
+  
+  // Verificar permissões
+  const canCreate = hasPermission('products', 'create') || hasPermission('products', 'manage')
+  const canEdit = hasPermission('products', 'update') || hasPermission('products', 'manage')
+  const canDelete = hasPermission('products', 'delete') || hasPermission('products', 'manage')
+  
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -322,18 +336,20 @@ export default function ProductsPage() {
       {/* Header */}
       <DashboardHeader
         title="Produtos"
-        description="Gerencie o cardápio do seu restaurante"
+        description={canCreate ? "Gerencie o cardápio do seu restaurante" : "Visualize o cardápio do restaurante"}
       >
-        <ProductFormDialog
-          businessId={businessId}
-          categories={categories}
-          onSuccess={fetchProducts}
-        >
-          <DashboardHeaderButton>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Produto
-          </DashboardHeaderButton>
-        </ProductFormDialog>
+        {canCreate && (
+          <ProductFormDialog
+            businessId={businessId}
+            categories={categories}
+            onSuccess={fetchProducts}
+          >
+            <DashboardHeaderButton>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Produto
+            </DashboardHeaderButton>
+          </ProductFormDialog>
+        )}
       </DashboardHeader>
 
 
@@ -493,6 +509,7 @@ export default function ProductsPage() {
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </ProductViewDialog>
+                            {canEdit && (
                             <ProductFormDialog
                               businessId={businessId}
                               categories={categories}
@@ -511,6 +528,8 @@ export default function ProductsPage() {
                                 <Edit className="h-4 w-4" />
                               </Button>
                             </ProductFormDialog>
+                            )}
+                            {canDelete && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -519,6 +538,7 @@ export default function ProductsPage() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -530,6 +550,8 @@ export default function ProductsPage() {
                           businessId={businessId}
                           onDelete={setDeletingProduct}
                           onSuccess={fetchProducts}
+                          canEdit={canEdit}
+                          canDelete={canDelete}
                         />
                       )}
                     </React.Fragment>

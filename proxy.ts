@@ -29,7 +29,7 @@ const adminRoutes = [
 const customerRoutes = ['/conta', '/enderecos', '/pedidos', '/favoritos']
 
 // Define auth routes (should redirect appropriately if already authenticated)
-const authRoutes = ['/login', '/register', '/signup', '/signin', '/customer-login', '/customer-signup']// Define public routes that should never be treated as business slugs
+const authRoutes = ['/login', '/register', '/signin', '/customer-login']// Define public routes that should never be treated as business slugs
 const publicRoutes = ['/payment', '/api', '/auth', '/about', '/contact', '/terms', '/privacy', '/test-subscription']
 
 // Function to check if a slug could be a business slug
@@ -175,7 +175,7 @@ export async function proxy(request: NextRequest) {
   // /login é a rota correta para admin - removido o redirect
   
   if (pathname === '/signup' || pathname === '/register' || pathname === '/signin') {
-    return NextResponse.redirect(new URL('/customer-signup', request.url))
+    return NextResponse.redirect(new URL('/customer-login', request.url))
   }
   
   // For possible business slugs, add a header to help the page identify it's a business route

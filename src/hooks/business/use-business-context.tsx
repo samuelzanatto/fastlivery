@@ -23,9 +23,12 @@ export function useBusinessContext() {
   const { data: session, isPending } = useSession();
   const business = useBusinessStore((state) => state.business);
   const membershipRole = useBusinessStore((state) => state.membershipRole);
+  const isEmployee = useBusinessStore((state) => state.isEmployee);
+  const employeeRole = useBusinessStore((state) => state.employeeRole);
   const loading = useBusinessStore((state) => state.loading);
   const initialized = useBusinessStore((state) => state.initialized);
   const error = useBusinessStore((state) => state.error);
+  const storeHasPermission = useBusinessStore((state) => state.hasPermission);
   const { fetchBusiness, updateBusinessInStore, refreshBusiness } = useBusinessStore();
 
   // Buscar dados do negócio quando necessário
@@ -35,46 +38,74 @@ export function useBusinessContext() {
     }
   }, [session?.user?.id, business, loading, fetchBusiness]);
 
-  // Computar permissões baseadas no role do usuário
+  // Função para verificar permissões baseadas no banco de dados
+  const hasPermission = useCallback((resource: string, action: string) => {
+    // Se é dono, tem todas as permissões
+    if (!isEmployee) return true;
+    
+    // Usar a função do store
+    return storeHasPermission(resource, action);
+  }, [isEmployee, storeHasPermission]);
+
+  // Computar permissões baseadas nas permissões reais do banco
   const permissions = useMemo(() => {
+    // Se não está logado ou não tem role
     if (!membershipRole) {
       return {
         isOwner: false,
         isManager: false,
         isAdmin: false,
         isStaff: false,
+        isEmployee: false,
         canManageBusiness: false,
         canManageOrders: false,
         canManageProducts: false,
         canManageEmployees: false,
         canViewAnalytics: false,
         canManageBilling: false,
+        canManageSettings: false,
         hasFullAccess: false,
       };
     }
 
-    const isOwner = membershipRole === 'owner';
-    const isManager = membershipRole === 'manager';
-    const isAdmin = membershipRole === 'admin';
-    const isStaff = ['chef', 'waiter', 'cashier', 'employee'].includes(membershipRole);
+    // Se é dono, tem acesso total
+    if (!isEmployee) {
+      return {
+        isOwner: true,
+        isManager: true,
+        isAdmin: true,
+        isStaff: false,
+        isEmployee: false,
+        canManageBusiness: true,
+        canManageOrders: true,
+        canManageProducts: true,
+        canManageEmployees: true,
+        canViewAnalytics: true,
+        canManageBilling: true,
+        canManageSettings: true,
+        hasFullAccess: true,
+      };
+    }
 
+    // Para funcionários, verificar permissões granulares
     return {
-      // Role checks
-      isOwner,
-      isManager,
-      isAdmin,
-      isStaff,
+      isOwner: false,
+      isManager: false,
+      isAdmin: false,
+      isStaff: true,
+      isEmployee: true,
 
-      // Permission checks baseadas nos roles
-      canManageBusiness: isOwner || isAdmin,
-      canManageOrders: isOwner || isManager || isAdmin || isStaff,
-      canManageProducts: isOwner || isManager || isAdmin,
-      canManageEmployees: isOwner || isAdmin,
-      canViewAnalytics: isOwner || isManager || isAdmin,
-      canManageBilling: isOwner,
-      hasFullAccess: isOwner,
+      // Permissões baseadas no banco de dados
+      canManageBusiness: hasPermission('business', 'manage'),
+      canManageOrders: hasPermission('orders', 'view') || hasPermission('orders', 'manage'),
+      canManageProducts: hasPermission('products', 'manage') || hasPermission('products', 'view'),
+      canManageEmployees: hasPermission('employees', 'manage'),
+      canViewAnalytics: hasPermission('analytics', 'view'),
+      canManageBilling: hasPermission('billing', 'manage'),
+      canManageSettings: hasPermission('settings', 'view') || hasPermission('settings', 'manage'),
+      hasFullAccess: false,
     };
-  }, [membershipRole]);
+  }, [membershipRole, isEmployee, hasPermission]);
 
   const membership = membershipRole ? { role: membershipRole } : null;
 
@@ -84,6 +115,8 @@ export function useBusinessContext() {
     user: session?.user,
     membership,
     membershipRole,
+    isEmployee,
+    employeeRole,
     
     // Estados de loading
     loading,
@@ -93,6 +126,7 @@ export function useBusinessContext() {
     
     // Permissões
     permissions,
+    hasPermission,
     
     // Actions
     updateBusiness: updateBusinessInStore,

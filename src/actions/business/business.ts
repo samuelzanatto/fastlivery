@@ -5,6 +5,7 @@ import { prisma } from '@/lib/database/prisma'
 import { slugify } from '@/lib/utils/formatters'
 import { computeIsOpenNow, parseOpeningHours } from '@/lib/utils/business-hours'
 import { headers } from 'next/headers'
+import { findBusinessForUser } from '@/lib/actions/auth-helpers'
 
 export interface BusinessUpdateInput {
   name?: string
@@ -57,14 +58,27 @@ export async function updateBusiness(
     }
 
     // SECURITY: Verificar se usuário tem role adequada para business
-    const allowedRoles = ['businessOwner', 'businessAdmin', 'businessManager']
+    const allowedRoles = ['businessOwner', 'businessAdmin', 'businessManager', 'businessStaff']
     if (!session.user.role || !allowedRoles.includes(session.user.role)) {
       return { success: false, error: 'Role não autorizada para operações de negócio' }
     }
 
-    // Encontrar negócio do dono
-    const business = await prisma.business.findFirst({
-      where: { ownerId: session.user.id },
+    // Encontrar negócio do usuário (dono ou funcionário)
+    const businessData = await findBusinessForUser(session.user.id, {
+      requiredPermission: { resource: 'settings', action: 'update' }
+    })
+
+    if (!businessData) {
+      // Verificar se é funcionário sem permissão
+      const basicBusinessData = await findBusinessForUser(session.user.id)
+      if (basicBusinessData?.isEmployee) {
+        return { success: false, error: 'Você não tem permissão para editar as configurações. Solicite ao administrador.' }
+      }
+      return { success: false, error: 'Negócio não encontrado' }
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id }
     })
 
     if (!business) {
@@ -194,13 +208,20 @@ export async function getBusiness(): Promise<{ success: true; data: BusinessData
     }
 
     // SECURITY: Verificar se usuário tem role adequada para business
-    const allowedRoles = ['businessOwner', 'businessAdmin', 'businessManager']
+    const allowedRoles = ['businessOwner', 'businessAdmin', 'businessManager', 'businessStaff']
     if (!session.user.role || !allowedRoles.includes(session.user.role)) {
       return { success: false, error: 'Role não autorizada para operações de negócio' }
     }
 
-    const business = await prisma.business.findFirst({
-      where: { ownerId: session.user.id },
+    // Encontrar negócio do usuário (dono ou funcionário)
+    const businessData = await findBusinessForUser(session.user.id)
+
+    if (!businessData) {
+      return { success: false, error: 'Negócio não encontrado' }
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id },
       select: {
         id: true,
         slug: true,

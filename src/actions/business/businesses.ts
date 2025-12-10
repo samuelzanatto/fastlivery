@@ -7,7 +7,8 @@ import {
   createSuccessResult,
   handleActionError,
   withAuth,
-  getAuthenticatedUser
+  getAuthenticatedUser,
+  findBusinessForUser
 } from '@/lib/actions/auth-helpers'
 import { 
   validateId 
@@ -68,10 +69,19 @@ async function _getMyBusiness(): Promise<ActionResult<BusinessWithRelations>> {
   try {
     const user = await getAuthenticatedUser()
 
-    const business = await prisma.business.findFirst({
-      where: {
-        ownerId: user.id
-      },
+    // Buscar negócio do usuário (dono ou funcionário)
+    const businessData = await findBusinessForUser(user.id)
+
+    if (!businessData) {
+      return {
+        success: false,
+        error: 'Negócio não encontrado',
+        code: 'BUSINESS_NOT_FOUND'
+      }
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id },
       include: {
         subscription: true,
         categories: {
@@ -117,11 +127,21 @@ async function _updateMyBusiness(
   try {
     const user = await getAuthenticatedUser()
 
-    // Verificar se o negócio pertence ao usuário
-    const business = await prisma.business.findFirst({
-      where: {
-        ownerId: user.id
+    // Buscar negócio do usuário (dono ou funcionário com permissão)
+    const businessData = await findBusinessForUser(user.id, {
+      requiredPermission: { resource: 'settings', action: 'update' }
+    })
+
+    if (!businessData) {
+      return {
+        success: false,
+        error: 'Negócio não encontrado ou sem permissão',
+        code: 'BUSINESS_NOT_FOUND'
       }
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id }
     })
 
     if (!business) {
@@ -180,10 +200,21 @@ async function _toggleBusinessStatus(): Promise<ActionResult<{ isOpen: boolean }
   try {
     const user = await getAuthenticatedUser()
 
-    const business = await prisma.business.findFirst({
-      where: {
-        ownerId: user.id
-      },
+    // Buscar negócio do usuário (dono ou funcionário com permissão)
+    const businessData = await findBusinessForUser(user.id, {
+      requiredPermission: { resource: 'settings', action: 'update' }
+    })
+
+    if (!businessData) {
+      return {
+        success: false,
+        error: 'Negócio não encontrado ou sem permissão',
+        code: 'BUSINESS_NOT_FOUND'
+      }
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessData.business.id },
       select: { id: true, isOpen: true }
     })
 

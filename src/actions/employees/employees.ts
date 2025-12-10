@@ -15,6 +15,24 @@ import {
   validateData,
   validateId 
 } from '@/lib/actions/validation-helpers'
+import crypto from 'crypto'
+import nodemailer from 'nodemailer'
+
+// Função auxiliar para enviar email
+async function sendInviteEmail(to: string, subject: string, html: string) {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_PORT === '465',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  })
+  await transporter.sendMail({ 
+    from: `"${process.env.SMTP_FROM_NAME || 'FastLivery'}" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`, 
+    to, 
+    subject, 
+    html 
+  })
+}
 
 export interface Employee {
   id: string
@@ -255,15 +273,17 @@ async function _createEmployee(
       where: { email: validatedData.email }
     })
 
+    let isNewUser = false
     if (!user) {
-      // Gerar senha padrão
-      const defaultPassword = "TempPass123!"
+      isNewUser = true
+      // Gerar senha aleatória forte (usuário vai definir própria senha via link)
+      const randomPassword = crypto.randomBytes(32).toString('hex')
       
       // Criar conta de usuário com Better Auth
       const authResult = await auth.api.signUpEmail({
         body: {
           email: validatedData.email,
-          password: defaultPassword,
+          password: randomPassword,
           name: validatedData.name || validatedData.email.split('@')[0]
         }
       })
@@ -276,14 +296,26 @@ async function _createEmployee(
         }
       }
 
-      // Atualizar o usuário criado
+      // Atualizar o usuário criado - fica inativo até definir senha
+      // Definir role como businessStaff para ter acesso ao dashboard
       user = await prisma.user.update({
         where: { id: authResult.user.id },
         data: {
-          isActive: false, // Só será ativo após verificação de email
-          emailVerified: false
+          isActive: false, // Só será ativo após definir senha
+          emailVerified: false,
+          role: 'businessStaff' // Role padrão para funcionários
         }
       })
+    } else {
+      // Se usuário já existe mas é customer, atualizar para businessStaff
+      if (user.role === 'customer' || !user.role) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            role: 'businessStaff'
+          }
+        })
+      }
     }
 
     // Verificar se usuário já é funcionário neste negócio
@@ -308,7 +340,7 @@ async function _createEmployee(
         userId: user.id,
         businessId,
         roleId: validatedData.roleId,
-        notes: validatedData.notes || (!user.emailVerified ? `Senha padrão: TempPass123! - DEVE ser alterada no primeiro login` : undefined),
+        notes: validatedData.notes || (isNewUser ? 'Aguardando definição de senha' : undefined),
         salary: validatedData.salary,
         startDate: validatedData.startDate || new Date(),
         createdById
@@ -340,6 +372,58 @@ async function _createEmployee(
         }
       }
     })
+
+    // Se é novo usuário, enviar email de convite para definir senha
+    if (isNewUser) {
+      try {
+        // Invalidar tokens antigos
+        const now = new Date()
+        await prisma.passwordResetToken.updateMany({ 
+          where: { userId: user.id, usedAt: null, expiresAt: { gt: now } }, 
+          data: { usedAt: now } 
+        })
+
+        // Criar token de definição de senha (válido por 48 horas para convite)
+        const rawToken = crypto.randomBytes(32).toString('hex')
+        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48) // 48 horas
+
+        await prisma.passwordResetToken.create({ 
+          data: { userId: user.id, tokenHash, expiresAt } 
+        })
+
+        // Montar link de definição de senha
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const setupLink = `${baseUrl}/setup-password/${rawToken}`
+
+        // Enviar email de convite
+        await sendInviteEmail(
+          validatedData.email,
+          `Bem-vindo(a) ao ${business.name} - Configure sua senha`,
+          `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #333;">Bem-vindo(a) ao ${business.name}!</h2>
+              <p>Você foi adicionado(a) como <strong>${role.name}</strong> no sistema.</p>
+              <p>Para acessar sua conta, você precisa configurar sua senha clicando no botão abaixo:</p>
+              <p style="text-align: center; margin: 30px 0;">
+                <a href="${setupLink}" 
+                   style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                  Configurar Minha Senha
+                </a>
+              </p>
+              <p style="color: #666; font-size: 14px;">Este link é válido por 48 horas.</p>
+              <p style="color: #666; font-size: 14px;">Se você não esperava este email, pode ignorá-lo.</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+              <p style="color: #999; font-size: 12px;">Se o botão não funcionar, copie e cole este link no seu navegador:</p>
+              <p style="color: #999; font-size: 12px; word-break: break-all;">${setupLink}</p>
+            </div>
+          `
+        )
+      } catch (emailError) {
+        console.error('Erro ao enviar email de convite:', emailError)
+        // Não falhar a criação se o email falhar, apenas logar
+      }
+    }
 
     revalidatePath('/dashboard/employees')
     revalidatePath('/dashboard')

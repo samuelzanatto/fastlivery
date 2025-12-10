@@ -246,7 +246,7 @@ export default function CustomerLoginPage() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors flex items-center justify-center"
                       >
                         {showPassword ? (
                           <EyeOff className="h-4 w-4" />
@@ -292,13 +292,7 @@ export default function CustomerLoginPage() {
                   transition={{ duration: 0.5, delay: 0.4 }}
                 >
                   <p className="text-sm text-slate-600">
-                    Não tem uma conta?{' '}
-                    <Link 
-                      href="/customer-signup" 
-                      className="text-orange-600 hover:text-orange-700 font-medium transition-colors"
-                    >
-                      Criar conta
-                    </Link>
+                    Cadastro de clientes é feito internamente pela agência.
                   </p>
                 </motion.div>
               </CardContent>

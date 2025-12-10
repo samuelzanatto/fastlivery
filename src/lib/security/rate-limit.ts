@@ -6,13 +6,13 @@ export const RATE_LIMIT_CONFIG = {
   // Autenticação crítica - mais restritiva
   auth: {
     windowMs: 15 * 60 * 1000, // 15 minutos
-    maxAttempts: 5, // 5 tentativas por IP
+    maxAttempts: process.env.NODE_ENV === 'development' ? 100 : 5, // 100 em dev, 5 em prod
     skipOnSuccess: false
   },
   // OTP/Verificação - moderadamente restritiva  
   otp: {
     windowMs: 10 * 60 * 1000, // 10 minutos
-    maxAttempts: 3, // 3 tentativas por IP
+    maxAttempts: process.env.NODE_ENV === 'development' ? 50 : 3, // 50 em dev, 3 em prod
     skipOnSuccess: true
   },
   // APIs gerais - menos restritiva

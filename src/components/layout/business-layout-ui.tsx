@@ -24,8 +24,7 @@ import {
   Settings,
   LogOut,
   ShoppingBag, 
-  Users, 
-  Store,
+  Users,
   QrCode,
   HeadphonesIcon,
   BarChart,
@@ -55,7 +54,7 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { data: session, isPending: sessionPending } = useSession()
-  const { permissions, loading: businessLoading, initialized: businessInitialized } = useBusinessContext()
+  const { permissions, loading: businessLoading, initialized: businessInitialized, hasPermission } = useBusinessContext()
   const { isOwner } = permissions
   const {
     userProfileData,
@@ -78,29 +77,18 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
   // Não retornar null - sempre renderizar o layout
   // O AuthGuard no layout.tsx já garante que temos sessão válida
 
-  const hasPermission = (resource: string, action: string) => {
+  // Função para verificar permissões na sidebar
+  const checkSidebarPermission = (resource: string, action: string) => {
+    // Dono tem acesso a tudo
     if (isOwner) return true
     
-    switch (resource) {
-      case 'dashboard':
-        return true
-      case 'orders':
-        return permissions.canManageOrders
-      case 'products':
-        return permissions.canManageProducts
-      case 'reports':
-        return permissions.canViewAnalytics
-      case 'tables':
-        return permissions.canManageOrders
-      case 'employees':
-        return permissions.canManageEmployees
-      case 'permissions':
-        return action === 'MANAGE' ? permissions.canManageEmployees : true
-      case 'settings':
-        return permissions.canManageBusiness
-      default:
-        return false
-    }
+    // Para o dashboard, todos têm acesso
+    if (resource === 'dashboard') return true
+    
+    // Usar a função hasPermission do contexto
+    // Converte action de READ/MANAGE para view/manage
+    const dbAction = action === 'READ' ? 'view' : 'manage'
+    return hasPermission(resource, dbAction)
   }
 
   const handleLogout = async () => {
@@ -123,7 +111,7 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
 
   const sidebarItems = allSidebarItems.filter(item => {
     if (isOwner) return true
-    return hasPermission(item.resource, item.action)
+    return checkSidebarPermission(item.resource, item.action)
   })
 
   return (
@@ -135,10 +123,7 @@ export function BusinessLayoutUI({ children }: BusinessLayoutUIProps) {
         
         {/* Logo */}
         <div className="flex items-center justify-between h-16 px-6">
-          <div className="flex items-center space-x-2">
-            <Store className="h-8 w-8 text-orange-500" />
-            <span className="text-xl font-bold text-slate-800">FastLivery</span>
-          </div>
+          <img src="/logo with name.png" alt="FastLivery Logo" className="h-10 w-auto" />
           <Button
             variant="ghost" 
             size="sm"

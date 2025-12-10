@@ -19,7 +19,8 @@ export async function GET(_request: NextRequest) {
 
     await syncUserData(sessionResponse.user)
 
-    const business = await prisma.business.findFirst({
+    // Primeiro, tentar encontrar como dono do negócio
+    let business = await prisma.business.findFirst({
       where: {
         ownerId: userId
       },
@@ -36,7 +37,46 @@ export async function GET(_request: NextRequest) {
       }
     })
 
-    console.log('[business/me] Negócio encontrado:', business ? business.id : 'null')
+    let isEmployee = false
+    let employeeRole = null
+
+    // Se não é dono, verificar se é funcionário
+    if (!business) {
+      const employeeProfile = await prisma.employeeProfile.findFirst({
+        where: {
+          userId: userId,
+          isActive: true
+        },
+        include: {
+          business: {
+            include: {
+              subscription: true,
+              categories: {
+                take: 5,
+                orderBy: { createdAt: 'desc' }
+              },
+              products: {
+                take: 5,
+                orderBy: { createdAt: 'desc' }
+              }
+            }
+          },
+          role: {
+            include: {
+              permissions: true
+            }
+          }
+        }
+      })
+
+      if (employeeProfile) {
+        business = employeeProfile.business
+        isEmployee = true
+        employeeRole = employeeProfile.role
+      }
+    }
+
+    console.log('[business/me] Negócio encontrado:', business ? business.id : 'null', isEmployee ? '(como funcionário)' : '(como dono)')
 
     if (!business) {
       return NextResponse.json(
@@ -49,7 +89,9 @@ export async function GET(_request: NextRequest) {
 
     return NextResponse.json({
       business: businessData,
-      owner: sessionResponse.user
+      owner: sessionResponse.user,
+      isEmployee,
+      employeeRole
     })
 
   } catch (error) {

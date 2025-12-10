@@ -160,7 +160,7 @@ export default function LandingPage() {
               Depoimentos
             </a>
             <Button onClick={handleAccessClick} className="bg-orange-500 hover:bg-orange-600">
-              {isAuthenticated ? 'Acessar Dashboard' : 'Começar Agora'}
+              {isAuthenticated ? 'Acessar Dashboard' : 'Entrar'}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </motion.div>

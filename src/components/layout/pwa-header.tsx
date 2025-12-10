@@ -131,11 +131,6 @@ export function PWAHeader({
           label: 'Login',
           href: '/login',
         },
-        {
-          icon: UserPlus,
-          label: 'Cadastrar',
-          href: '/signup',
-        },
       ]
     : [
         // Menu para rotas públicas dos negócios (clientes)
@@ -169,11 +164,6 @@ export function PWAHeader({
             icon: LogIn,
             label: 'Login',
             href: '/customer-login',
-          },
-          {
-            icon: UserPlus,
-            label: 'Cadastrar',
-            href: '/customer-signup',
           },
         ]),
       ]

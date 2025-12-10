@@ -201,9 +201,17 @@ export async function updateRole(
   data: RoleUpdateInput
 ): Promise<ActionResult<RoleWithPermissions>> {
   try {
-    const { business } = await import('@/lib/actions/auth-helpers').then(m => m.getAuthenticatedUserBusiness())
+    const { business, isEmployee, employeeRole } = await import('@/lib/actions/auth-helpers').then(m => m.getAuthenticatedUserBusiness())
     const validatedId = validateId(id)
     const validatedData = validateData(RoleUpdateSchema, data)
+
+    // Impedir que funcionário edite seu próprio cargo
+    if (isEmployee && employeeRole?.id === validatedId) {
+      return {
+        success: false,
+        error: 'Você não pode editar seu próprio cargo'
+      }
+    }
 
     // Check if role exists and belongs to business
     const existingRole = await prisma.role.findFirst({
@@ -278,8 +286,16 @@ export async function deleteRole(
   id: string
 ): Promise<ActionResult<boolean>> {
   try {
-    const { business } = await import('@/lib/actions/auth-helpers').then(m => m.getAuthenticatedUserBusiness())
+    const { business, isEmployee, employeeRole } = await import('@/lib/actions/auth-helpers').then(m => m.getAuthenticatedUserBusiness())
     const validatedId = validateId(id)
+
+    // Impedir que funcionário exclua seu próprio cargo
+    if (isEmployee && employeeRole?.id === validatedId) {
+      return {
+        success: false,
+        error: 'Você não pode excluir seu próprio cargo'
+      }
+    }
 
     // Check if role exists and belongs to business
     const existingRole = await prisma.role.findFirst({
@@ -324,21 +340,22 @@ export async function deleteRole(
 
 /**
  * Get available permissions resources and actions
+ * Recursos devem corresponder aos usados na sidebar
  */
 export async function getPermissionResources(): Promise<ActionResult<Array<{ resource: string; actions: string[] }>>> {
   try {
     // Define available resources and their actions
     const resources = [
       {
+        resource: 'dashboard',
+        actions: ['view']
+      },
+      {
         resource: 'orders',
         actions: ['view', 'create', 'update', 'delete', 'manage']
       },
       {
         resource: 'products',
-        actions: ['view', 'create', 'update', 'delete', 'manage']
-      },
-      {
-        resource: 'categories',
         actions: ['view', 'create', 'update', 'delete', 'manage']
       },
       {
@@ -350,12 +367,8 @@ export async function getPermissionResources(): Promise<ActionResult<Array<{ res
         actions: ['view', 'create', 'update', 'delete', 'manage']
       },
       {
-        resource: 'customers',
-        actions: ['view', 'create', 'update', 'delete', 'manage']
-      },
-      {
-        resource: 'payments',
-        actions: ['view', 'process', 'refund', 'manage']
+        resource: 'permissions',
+        actions: ['view', 'manage']
       },
       {
         resource: 'reports',

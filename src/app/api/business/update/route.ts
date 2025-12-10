@@ -13,13 +13,42 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json()
 
-    // Encontrar empresa do dono
-    const business = await prisma.business.findFirst({
+    // Primeiro, tentar encontrar como dono
+    let business = await prisma.business.findFirst({
       where: { ownerId: session.user.id },
     })
 
+    // Se não é dono, verificar se é funcionário com permissão
     if (!business) {
-      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 })
+      const employeeProfile = await prisma.employeeProfile.findFirst({
+        where: {
+          userId: session.user.id,
+          isActive: true
+        },
+        include: {
+          business: true,
+          role: {
+            include: {
+              permissions: true
+            }
+          }
+        }
+      })
+
+      if (employeeProfile) {
+        // Verificar se tem permissão para editar configurações
+        const hasPermission = employeeProfile.role.permissions.some(
+          p => (p.resource === 'settings' || p.resource === '*') && 
+               (p.action === 'update' || p.action === 'manage' || p.action === '*')
+        )
+        if (hasPermission) {
+          business = employeeProfile.business
+        }
+      }
+    }
+
+    if (!business) {
+      return NextResponse.json({ error: 'Empresa não encontrada ou sem permissão' }, { status: 404 })
     }
 
     // Preparar dados de atualização
