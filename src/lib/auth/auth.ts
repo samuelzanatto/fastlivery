@@ -58,6 +58,38 @@ export const auth = betterAuth({
     "https://fastlivery.com.br",
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : [])
   ],
+  // Database hooks para controle de criação de usuários
+  databaseHooks: {
+    user: {
+      create: {
+        // Antes de criar usuário, definir role como customer se não especificado
+        before: async (user) => {
+          console.log('[AUTH] Criando novo usuário:', user.email)
+          // Se o usuário não tem role definida, é um cliente da página pública
+          if (!user.role) {
+            console.log('[AUTH] Definindo role como customer para:', user.email)
+            return {
+              data: {
+                ...user,
+                role: 'customer',
+                isActive: true, // Clientes são ativados automaticamente
+                emailVerified: true, // Clientes não precisam verificar email para cadastrar
+              }
+            }
+          }
+          return { data: user }
+        },
+        // Após criar, logar para debug
+        after: async (user) => {
+          console.log('[AUTH] Usuário criado com sucesso:', { 
+            id: user.id, 
+            email: user.email, 
+            role: user.role 
+          })
+        }
+      }
+    }
+  },
   emailAndPassword: {
     enabled: true,
     // Agora obrigatório: dependerá do fluxo OTP (override ativado no plugin emailOTP)
@@ -103,8 +135,6 @@ export const auth = betterAuth({
         required: false,
       },
     },
-    // SECURITY: Hooks para garantir controle de acesso
-    // onCreate hook será configurado via callbacks externos
   },
   advanced: {
     database: {
@@ -115,7 +145,8 @@ export const auth = betterAuth({
     nextCookies(),
     emailOTP({
       // Substitui a verificação padrão por link pelo fluxo de OTP
-      overrideDefaultEmailVerification: true,
+      // Nota: Clientes não precisam verificar email no cadastro (emailVerified já é true)
+      overrideDefaultEmailVerification: false,
       async sendVerificationOTP({ email, otp, type }) {
         const transporter = createTransporter()
         

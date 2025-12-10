@@ -241,7 +241,7 @@ export function PWAHeader({
                         {session.user.email}
                       </p>
                       <Badge variant="secondary" className="text-xs mt-1 bg-orange-200/50 text-orange-700 border-orange-200">
-                        Cliente
+                        {session.user.role === 'businessOwner' ? 'Proprietário' : session.user.role === 'businessStaff' ? 'Funcionário' : 'Cliente'}
                       </Badge>
                     </div>
                   </div>
@@ -395,7 +395,7 @@ export function PWAHeader({
                           {session.user.email}
                         </p>
                         <Badge variant="secondary" className="text-xs mt-1 bg-orange-200/50 text-orange-700 border-orange-200">
-                          Cliente
+                          {session.user.role === 'businessOwner' ? 'Proprietário' : session.user.role === 'businessStaff' ? 'Funcionário' : 'Cliente'}
                         </Badge>
                       </div>
                     </div>

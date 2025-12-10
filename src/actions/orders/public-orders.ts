@@ -8,9 +8,14 @@ import {
   createSuccessResult,
   handleActionError
 } from '@/lib/actions/auth-helpers'
+import { sendOrderItemsAddedPushNotification } from '@/actions/push/push-notifications'
 
 export type OrderType = 'DELIVERY' | 'PICKUP' | 'DINE_IN'
 export type PaymentMethod = 'MONEY' | 'CREDIT' | 'DEBIT' | 'PIX'
+
+// Statuses que indicam pedido ainda em aberto (não finalizado)
+type ActiveOrderStatus = 'PENDING' | 'CONFIRMED' | 'PREPARING' | 'READY'
+const ACTIVE_ORDER_STATUSES: ActiveOrderStatus[] = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY']
 
 export interface PublicOrderCreateInput {
   businessSlug: string
@@ -28,6 +33,7 @@ export interface PublicOrderCreateInput {
   customerEmail?: string
   deliveryAddress?: string
   tableId?: string
+  tableNumber?: string
   notes?: string
   deliveryFee?: number
 }
@@ -107,6 +113,60 @@ export async function createPublicOrder(
       }
     }
 
+    let tableForOrder: { id: string } | null = null
+
+    if (input.type === 'DINE_IN') {
+      if (!input.tableId && !input.tableNumber) {
+        return {
+          success: false,
+          error: 'Número da mesa é obrigatório para pedidos no local',
+          code: 'TABLE_REQUIRED'
+        }
+      }
+
+      const table = await prisma.table.findFirst({
+        where: {
+          businessId: business.id,
+          ...(input.tableId
+            ? { id: input.tableId }
+            : { number: input.tableNumber })
+        },
+        select: { id: true, isOccupied: true, isReserved: true }
+      })
+
+      if (!table) {
+        return {
+          success: false,
+          error: 'Mesa não encontrada para este estabelecimento',
+          code: 'TABLE_NOT_FOUND'
+        }
+      }
+
+      // Verificar se já existe pedido ativo para esta mesa
+      const existingActiveOrder = await prisma.order.findFirst({
+        where: {
+          tableId: table.id,
+          businessId: business.id,
+          status: { in: ACTIVE_ORDER_STATUSES }
+        },
+        select: { id: true, orderNumber: true }
+      })
+
+      if (existingActiveOrder) {
+        return {
+          success: false,
+          error: 'Já existe um pedido em andamento para esta mesa. Você pode adicionar itens ao pedido existente.',
+          code: 'ACTIVE_ORDER_EXISTS',
+          data: {
+            existingOrderId: existingActiveOrder.id,
+            existingOrderNumber: existingActiveOrder.orderNumber
+          }
+        } as ActionResult<PublicOrderResult>
+      }
+
+      tableForOrder = { id: table.id }
+    }
+
     // Verificar endereço para delivery
     if (input.type === 'DELIVERY' && !input.deliveryAddress) {
       return {
@@ -174,26 +234,37 @@ export async function createPublicOrder(
     const orderNumber = `PED${Date.now()}`
 
     // Criar pedido
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        type: input.type,
-        businessId: business.id,
-        customerName: input.customerName,
-        customerPhone: input.customerPhone,
-        customerEmail: input.customerEmail || null,
-        deliveryAddress: input.deliveryAddress || null,
-        tableId: input.type === 'DINE_IN' ? input.tableId : null,
-        notes: input.notes || null,
-        subtotal,
-        deliveryFee,
-        total,
-        status: 'PENDING',
-        paymentStatus: 'PENDING',
-        items: {
-          create: validatedItems
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          orderNumber,
+          type: input.type,
+          businessId: business.id,
+          customerName: input.customerName,
+          customerPhone: input.customerPhone,
+          customerEmail: input.customerEmail || null,
+          deliveryAddress: input.deliveryAddress || null,
+          tableId: input.type === 'DINE_IN' ? tableForOrder?.id ?? null : null,
+          notes: input.notes || null,
+          subtotal,
+          deliveryFee,
+          total,
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
+          items: {
+            create: validatedItems
+          }
         }
+      })
+
+      if (tableForOrder) {
+        await tx.table.update({
+          where: { id: tableForOrder.id },
+          data: { isOccupied: true }
+        })
       }
+
+      return created
     })
 
     console.log(`[LOG] Novo pedido público criado para ${business.name}:`, order.orderNumber)
@@ -204,6 +275,337 @@ export async function createPublicOrder(
       id: order.id,
       orderNumber: order.orderNumber,
       total: order.total
+    })
+  } catch (error) {
+    return handleActionError(error)
+  }
+}
+
+/**
+ * Verifica se já existe um pedido ativo para determinada mesa
+ */
+export async function getActiveOrderForTable(
+  businessSlug: string,
+  tableId?: string,
+  tableNumber?: string
+): Promise<ActionResult<{
+  exists: boolean
+  order?: {
+    id: string
+    orderNumber: string
+    status: string
+    total: number
+    items: Array<{
+      id: string
+      quantity: number
+      price: number
+      product: { name: string }
+    }>
+  }
+  table?: {
+    id: string
+    number: string
+  }
+}>> {
+  try {
+    if (!tableId && !tableNumber) {
+      return createSuccessResult({ exists: false })
+    }
+
+    const business = await prisma.business.findFirst({
+      where: { slug: businessSlug, isActive: true },
+      select: { id: true }
+    })
+
+    if (!business) {
+      return { success: false, error: 'Estabelecimento não encontrado', code: 'BUSINESS_NOT_FOUND' }
+    }
+
+    // Buscar mesa
+    const table = await prisma.table.findFirst({
+      where: {
+        businessId: business.id,
+        ...(tableId ? { id: tableId } : { number: tableNumber })
+      },
+      select: { id: true, number: true }
+    })
+
+    if (!table) {
+      return createSuccessResult({ exists: false })
+    }
+
+    // Buscar pedido ativo para esta mesa
+    const activeOrder = await prisma.order.findFirst({
+      where: {
+        tableId: table.id,
+        businessId: business.id,
+        status: { in: ACTIVE_ORDER_STATUSES }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        total: true,
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            product: { select: { name: true } }
+          }
+        }
+      }
+    })
+
+    if (!activeOrder) {
+      return createSuccessResult({ exists: false, table: { id: table.id, number: table.number } })
+    }
+
+    return createSuccessResult({
+      exists: true,
+      order: {
+        id: activeOrder.id,
+        orderNumber: activeOrder.orderNumber,
+        status: activeOrder.status,
+        total: activeOrder.total,
+        items: activeOrder.items.map(item => ({
+          id: item.id,
+          quantity: item.quantity,
+          price: item.price,
+          product: item.product
+        }))
+      },
+      table: { id: table.id, number: table.number }
+    })
+  } catch (error) {
+    return handleActionError(error)
+  }
+}
+
+/**
+ * Adicionar itens a um pedido existente (para dine-in)
+ */
+export interface AddItemsToOrderInput {
+  orderId: string
+  businessSlug: string
+  items: Array<{
+    productId: string
+    quantity: number
+    price: number
+    notes?: string
+    selectedOptions?: Record<string, string[]>
+  }>
+}
+
+export async function addItemsToOrder(
+  input: AddItemsToOrderInput
+): Promise<ActionResult<{
+  id: string
+  orderNumber: string
+  total: number
+  newItemsCount: number
+  addedTotal: number
+}>> {
+  try {
+    const business = await prisma.business.findFirst({
+      where: { slug: input.businessSlug, isActive: true },
+      select: { id: true, name: true, slug: true, avatar: true }
+    })
+
+    if (!business) {
+      return { success: false, error: 'Estabelecimento não encontrado', code: 'BUSINESS_NOT_FOUND' }
+    }
+
+    // Verificar se o pedido existe e está em status que permite adição
+    const existingOrder = await prisma.order.findFirst({
+      where: {
+        id: input.orderId,
+        businessId: business.id,
+        status: { in: ACTIVE_ORDER_STATUSES }
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        total: true,
+        subtotal: true,
+        tableId: true,
+        table: { select: { number: true } }
+      }
+    })
+
+    if (!existingOrder) {
+      return {
+        success: false,
+        error: 'Pedido não encontrado ou já foi finalizado. Não é possível adicionar itens.',
+        code: 'ORDER_NOT_FOUND_OR_CLOSED'
+      }
+    }
+
+    // Validar produtos
+    const productIds = input.items.map(item => item.productId)
+    const products = await prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        businessId: business.id,
+        isAvailable: true
+      },
+      select: { id: true, name: true, price: true }
+    })
+
+    if (products.length !== productIds.length) {
+      return {
+        success: false,
+        error: 'Um ou mais produtos não estão disponíveis',
+        code: 'PRODUCTS_UNAVAILABLE'
+      }
+    }
+
+    // Calcular total dos novos itens
+    let addedSubtotal = 0
+    const validatedItems = input.items.map(item => {
+      const product = products.find(p => p.id === item.productId)
+      if (!product) {
+        throw new Error(`Produto ${item.productId} não encontrado`)
+      }
+      const itemTotal = item.price * item.quantity
+      addedSubtotal += itemTotal
+      return {
+        productId: item.productId,
+        quantity: item.quantity,
+        price: item.price,
+        notes: item.notes || null
+      }
+    })
+
+    // Atualizar pedido com novos itens
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      // Inserir novos itens
+      await tx.orderItem.createMany({
+        data: validatedItems.map(item => ({
+          orderId: existingOrder.id,
+          ...item
+        }))
+      })
+
+      // Atualizar totais do pedido
+      const newSubtotal = existingOrder.subtotal + addedSubtotal
+      const updated = await tx.order.update({
+        where: { id: existingOrder.id },
+        data: {
+          subtotal: newSubtotal,
+          total: newSubtotal + (existingOrder.total - existingOrder.subtotal) // mantém delivery fee etc
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          total: true
+        }
+      })
+
+      return updated
+    })
+
+    // Enviar notificação push para o dashboard
+    sendOrderItemsAddedPushNotification({
+      businessId: business.id,
+      businessName: business.name,
+      businessLogo: business.avatar,
+      orderId: updatedOrder.id,
+      orderNumber: updatedOrder.orderNumber,
+      tableNumber: existingOrder.table?.number,
+      itemsAdded: input.items.length,
+      addedTotal: addedSubtotal
+    }).catch(err => console.error('[Push] Erro ao enviar notificação de itens adicionados:', err))
+
+    console.log(`[LOG] Itens adicionados ao pedido ${existingOrder.orderNumber}: +${input.items.length} itens, +R$${addedSubtotal.toFixed(2)}`)
+
+    revalidatePath(`/${input.businessSlug}`)
+
+    return createSuccessResult({
+      id: updatedOrder.id,
+      orderNumber: updatedOrder.orderNumber,
+      total: updatedOrder.total,
+      newItemsCount: input.items.length,
+      addedTotal: addedSubtotal
+    })
+  } catch (error) {
+    return handleActionError(error)
+  }
+}
+
+/**
+ * Buscar pedido público por ID (para acompanhamento)
+ */
+export async function getPublicOrder(
+  orderId: string,
+  businessSlug: string
+): Promise<ActionResult<{
+  id: string
+  orderNumber: string
+  status: string
+  paymentStatus: string
+  total: number
+  subtotal: number
+  deliveryFee: number
+  type: string
+  tableNumber?: string
+  customerName: string
+  createdAt: Date
+  items: Array<{
+    id: string
+    quantity: number
+    price: number
+    notes: string | null
+    product: { name: string }
+  }>
+}>> {
+  try {
+    const business = await prisma.business.findFirst({
+      where: { slug: businessSlug, isActive: true },
+      select: { id: true }
+    })
+
+    if (!business) {
+      return { success: false, error: 'Estabelecimento não encontrado', code: 'BUSINESS_NOT_FOUND' }
+    }
+
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        businessId: business.id
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        total: true,
+        subtotal: true,
+        deliveryFee: true,
+        type: true,
+        customerName: true,
+        createdAt: true,
+        table: { select: { number: true } },
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            price: true,
+            notes: true,
+            product: { select: { name: true } }
+          }
+        }
+      }
+    })
+
+    if (!order) {
+      return { success: false, error: 'Pedido não encontrado', code: 'ORDER_NOT_FOUND' }
+    }
+
+    return createSuccessResult({
+      ...order,
+      tableNumber: order.table?.number
     })
   } catch (error) {
     return handleActionError(error)

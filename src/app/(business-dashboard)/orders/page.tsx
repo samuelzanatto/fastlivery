@@ -195,7 +195,8 @@ interface Order {
   status: OrderStatus
   paymentStatus: PaymentStatus
   type: OrderType
-  tableNumber?: number
+  tableId?: string | null
+  tableNumber?: number | string | null
   address?: string
   waiterName?: string
   observations?: string
@@ -419,7 +420,7 @@ const PaymentBadge = ({ status }: { status: PaymentStatus }) => {
   )
 }
 
-const TypeBadge = ({ type, tableNumber }: { type: OrderType; tableNumber?: number }) => {
+const TypeBadge = ({ type, tableNumber }: { type: OrderType; tableNumber?: number | string | null }) => {
   const typeConfig = {
     delivery: { label: "Delivery", icon: Truck, className: "bg-indigo-100 text-indigo-800 border border-indigo-300" },
     pickup: { label: "Retirada", icon: Package, className: "bg-amber-100 text-amber-800 border border-amber-300" },
@@ -523,7 +524,7 @@ const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating, canEdit, canDelet
                 {canEdit && (
                 <div>
                   <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1 block">Ações</label>
-                  <OrderActions order={order} />
+                  <OrderActions order={order} onOrderUpdate={onOrderUpdate} />
                 </div>
                 )}
               </div>
@@ -568,16 +569,35 @@ const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating, canEdit, canDelet
 }
 
 // Componente de ações
-const OrderActions = ({ order }: { order: Order }) => {
+const OrderActions = ({ order, onOrderUpdate }: { order: Order; onOrderUpdate: () => void }) => {
   const [isUpdating, setIsUpdating] = useState(false)
 
-  const handleStatusUpdate = async (_newStatus: OrderStatus) => {
+  const handleStatusUpdate = async (newStatus: OrderStatus) => {
     setIsUpdating(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-  // status atualizado localmente (TODO: integrar API)
+      const { updateOrderStatus } = await import('@/actions/orders/orders')
+
+      const statusForApi = (() => {
+        switch (newStatus) {
+          case 'pending': return 'PENDING'
+          case 'preparing': return 'PREPARING'
+          case 'ready': return 'READY'
+          case 'delivered': return 'DELIVERED'
+          case 'cancelled': return 'CANCELLED'
+        }
+      })()
+
+      const result = await updateOrderStatus(order.id, statusForApi)
+
+      if (!result.success) {
+        throw new Error(result.error || 'Erro ao atualizar status do pedido')
+      }
+
+      notify('success', 'Status do pedido atualizado', { description: `Pedido #${order.displayId || order.id} agora está ${newStatus}.` })
+      onOrderUpdate()
     } catch (error) {
   console.error('Erro ao atualizar status:', error)
+      notify('error', error instanceof Error ? error.message : 'Erro ao atualizar status')
     } finally {
       setIsUpdating(false)
     }
@@ -766,7 +786,8 @@ export default function OrdersPage() {
             status: mapDbOrderStatus((newOrder as { status?: string }).status),
             paymentStatus: mapDbPaymentStatus((newOrder as { paymentStatus?: string }).paymentStatus),
             type: mapDbOrderType((newOrder as { type?: string }).type),
-            tableNumber: (newOrder as { tableNumber?: number }).tableNumber,
+            tableId: (newOrder as { tableId?: string | null }).tableId,
+            tableNumber: (newOrder as { tableNumber?: number | string | null }).tableNumber,
             address: (newOrder as { address?: string }).address,
             waiterName: (newOrder as { waiterName?: string }).waiterName,
             observations: (newOrder as { observations?: string }).observations,
@@ -826,7 +847,8 @@ export default function OrdersPage() {
             status: mapDbOrderStatus((updatedOrder as { status?: string }).status),
             paymentStatus: mapDbPaymentStatus((updatedOrder as { paymentStatus?: string }).paymentStatus),
             type: mapDbOrderType((updatedOrder as { type?: string }).type),
-            tableNumber: (updatedOrder as { tableNumber?: number }).tableNumber,
+          tableId: (updatedOrder as { tableId?: string | null }).tableId,
+          tableNumber: (updatedOrder as { tableNumber?: number | string | null }).tableNumber,
             address: (updatedOrder as { address?: string }).address,
             waiterName: (updatedOrder as { waiterName?: string }).waiterName,
             observations: (updatedOrder as { observations?: string }).observations,
@@ -837,6 +859,10 @@ export default function OrdersPage() {
           if (o.id !== updatedOrder.id) return o
           const previousPaymentStatus = o.paymentStatus
           const nextPaymentStatus = normalized.paymentStatus || previousPaymentStatus
+          const previousTotal = o.total
+          const nextTotal = normalized.total || previousTotal
+          
+          // Notificação de mudança de pagamento
           if (previousPaymentStatus !== nextPaymentStatus) {
             const alreadyNotified = lastPaymentToastRef.current[o.id] === nextPaymentStatus
             if (!alreadyNotified) {
@@ -848,6 +874,33 @@ export default function OrdersPage() {
               lastPaymentToastRef.current[o.id] = nextPaymentStatus
             }
           }
+          
+          // Notificação de itens adicionados (total aumentou)
+          if (nextTotal > previousTotal && previousTotal > 0) {
+            const diff = nextTotal - previousTotal
+            const tableInfo = normalized.tableNumber ? ` (Mesa ${normalized.tableNumber})` : ''
+            notify('info', `➕ Itens adicionados #${(normalized.displayId || o.displayId || o.id).slice(0,8)}${tableInfo}`, { 
+              description: `+R$ ${diff.toFixed(2)} adicionado ao pedido` 
+            })
+            // Também fazer highlight
+            setHighlighted(prev => {
+              const clone = new Set(prev)
+              clone.add(updatedOrder.id)
+              return clone
+            })
+            if (highlightTimeoutsRef.current[updatedOrder.id]) {
+              clearTimeout(highlightTimeoutsRef.current[updatedOrder.id])
+            }
+            highlightTimeoutsRef.current[updatedOrder.id] = setTimeout(() => {
+              setHighlighted(prev => {
+                const clone = new Set(prev)
+                clone.delete(updatedOrder.id)
+                return clone
+              })
+              delete highlightTimeoutsRef.current[updatedOrder.id]
+            }, 4000)
+          }
+          
           return { ...o, ...normalized }
         }))
 

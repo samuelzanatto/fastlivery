@@ -7,6 +7,8 @@ interface BusinessOrder {
   orderNumber: string
   status: string
   type: string
+  tableId?: string | null
+  tableNumber?: string | null
   customerName: string
   customerPhone: string
   total: number
@@ -29,6 +31,8 @@ interface LegacyOrder {
   customer?: string
   customerName?: string
   items?: string[]
+  tableId?: string | null
+  tableNumber?: string | null
   status: string
   createdAt: string
   updatedAt: string
@@ -63,6 +67,8 @@ export function useOrdersRealtime(
         `${item.quantity}x ${item.name}`
       ) || [],
       status: businessOrder.status,
+      tableId: businessOrder.tableId,
+      tableNumber: businessOrder.tableNumber,
       createdAt: businessOrder.createdAt,
       updatedAt: businessOrder.updatedAt,
       total: businessOrder.total,

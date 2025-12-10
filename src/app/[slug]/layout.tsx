@@ -2,6 +2,8 @@ import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { ReactNode } from 'react'
 import { prisma } from '@/lib/database/prisma'
+import { CartProvider } from '@/contexts/cart-context'
+import { BusinessLayoutWrapper } from '@/components/layout/business-layout-wrapper'
 
 interface LayoutProps {
   children: ReactNode
@@ -57,8 +59,12 @@ export default async function BusinessLayout({ children, params }: LayoutProps) 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {children}
-    </div>
+    <CartProvider>
+      <BusinessLayoutWrapper>
+        <div className="min-h-screen bg-gray-50">
+          {children}
+        </div>
+      </BusinessLayoutWrapper>
+    </CartProvider>
   )
 }
