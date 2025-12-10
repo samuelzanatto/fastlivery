@@ -52,7 +52,11 @@ export const auth = betterAuth({
     // URL principal da aplicação
     ...(process.env.NEXT_PUBLIC_APP_URL ? [process.env.NEXT_PUBLIC_APP_URL] : []),
     // URLs do ngrok dinamicamente
-    ...(process.env.NGROK_URL ? [process.env.NGROK_URL] : [])
+    ...(process.env.NGROK_URL ? [process.env.NGROK_URL] : []),
+    // URLs de produção (Vercel e domínio customizado)
+    "https://www.fastlivery.com.br",
+    "https://fastlivery.com.br",
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : [])
   ],
   emailAndPassword: {
     enabled: true,
