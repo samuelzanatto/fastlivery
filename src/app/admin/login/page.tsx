@@ -41,7 +41,7 @@ export default function AdminLoginPage() {
       if (error) {
         notify('error', error.message || 'Credenciais inválidas')
         setIsLoading(false)
-        return
+        return 
       }
 
       if (data) {
