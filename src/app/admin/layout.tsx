@@ -27,16 +27,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const isPublicPage = pathname === '/admin/login'
 
   useEffect(() => {
-    if (isPending) return
+    // Não fazer nada enquanto carrega
+    if (isPending) {
+      return
+    }
 
-    // Se é página pública, não precisa verificar auth
+    // Se é página pública
     if (isPublicPage) {
       // Se já está logado como platformAdmin, redirecionar para dashboard
-      if (session?.user?.role === 'platformAdmin' || session?.user?.role === 'platformSupport') {
+      const role = (session?.user as { role?: string } | undefined)?.role
+      if (role === 'platformAdmin' || role === 'platformSupport') {
         router.replace('/admin/dashboard')
-        return
+      } else {
+        setIsAuthorized(true)
       }
-      setIsAuthorized(true)
       return
     }
 
@@ -48,7 +52,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
 
     // Verificar se tem role de plataforma
-    const role = session.user?.role
+    const role = (session.user as { role?: string } | undefined)?.role
     if (role !== 'platformAdmin' && role !== 'platformSupport') {
       setIsAuthorized(false)
       router.replace('/admin/login?error=access_denied')
@@ -56,7 +60,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
 
     setIsAuthorized(true)
-  }, [session, isPending, router, isPublicPage, pathname])
+  }, [session, isPending, router, isPublicPage])
 
   // Mostrar loading enquanto verifica auth
   if (isPending || isAuthorized === null) {

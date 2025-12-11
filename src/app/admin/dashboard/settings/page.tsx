@@ -136,7 +136,7 @@ export default function AdminSettingsPage() {
                 <p className="text-slate-300 font-medium">Status</p>
                 <p className="text-sm text-green-400">Conectado</p>
               </div>
-              <Button variant="outline" className="w-full border-slate-600 text-slate-300 hover:bg-slate-700">
+              <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white">
                 Executar Backup
               </Button>
             </CardContent>

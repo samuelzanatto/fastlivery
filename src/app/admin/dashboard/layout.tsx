@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSession, signOut } from '@/lib/auth/auth-client'
 import { motion } from 'framer-motion'
@@ -68,67 +69,84 @@ export default function AdminDashboardLayout({ children }: AdminDashboardLayoutP
     <div className="min-h-screen bg-slate-900">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <aside
+      {/* Sidebar - Flutuante */}
+      <motion.aside
         className={cn(
-          'fixed top-0 left-0 z-50 h-full w-64 bg-slate-800 border-r border-slate-700 transform transition-transform duration-200 ease-in-out lg:translate-x-0',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          'fixed top-4 left-4 bottom-4 z-50 w-64 bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl flex flex-col transition-all duration-200',
+          sidebarOpen ? 'flex translate-x-0 lg:translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-6 border-b border-slate-700">
-          <Link href="/admin/dashboard" className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-              <Shield className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-white">Admin</span>
+        <div className="flex items-center justify-between h-16 px-6">
+          <Link href="/admin/dashboard" className="flex items-center">
+            <Image
+              src="/logo with name.png"
+              alt="FastLivery"
+              width={160}
+              height={40}
+              className="h-10 w-auto object-contain"
+            />
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-slate-400 hover:text-white"
+            className="lg:hidden text-slate-400 hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-1">
+        <nav className="p-4 space-y-2 flex-1 overflow-y-auto">
           {sidebarItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+            const isActive = item.href === '/admin/dashboard' 
+              ? pathname === '/admin/dashboard' 
+              : pathname.startsWith(item.href)
             return (
-              <Link
+              <motion.div
                 key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-                )}
+                whileHover={{ x: 4 }}
+                whileTap={{ scale: 0.98 }}
               >
-                <item.icon className="w-5 h-5" />
-                {item.title}
-              </Link>
+                <Link
+                  href={item.href}
+                  onClick={() => setSidebarOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200',
+                    isActive
+                      ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30 shadow-lg shadow-orange-500/10'
+                      : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/30 border border-transparent'
+                  )}
+                >
+                  <item.icon className="w-5 h-5 shrink-0" />
+                  <span>{item.title}</span>
+                </Link>
+              </motion.div>
             )
           })}
         </nav>
 
         {/* User section at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-700">
+        <div className="px-2 py-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-medium">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/30 transition-all duration-200"
+              >
+                <div className="w-8 h-8 rounded-full bg-linear-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-sm font-medium shadow-lg shadow-orange-500/20">
                   {session?.user?.name?.charAt(0) || 'A'}
                 </div>
-                <div className="flex-1 text-left">
+                <div className="flex-1 text-left min-w-0">
                   <p className="text-sm font-medium text-white truncate">
                     {session?.user?.name || 'Admin'}
                   </p>
@@ -136,18 +154,13 @@ export default function AdminDashboardLayout({ children }: AdminDashboardLayoutP
                     {session?.user?.email}
                   </p>
                 </div>
-                <ChevronDown className="w-4 h-4" />
-              </button>
+                <ChevronDown className="w-4 h-4 shrink-0" />
+              </motion.button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-slate-800 border-slate-700">
-              <DropdownMenuItem className="text-slate-300 focus:text-white focus:bg-slate-700">
-                <Settings className="w-4 h-4 mr-2" />
-                Configurações
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-slate-700" />
               <DropdownMenuItem
                 onClick={handleSignOut}
-                className="text-red-400 focus:text-red-300 focus:bg-red-500/10"
+                className="text-red-400 focus:text-red-300 focus:bg-red-500/10 cursor-pointer"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sair
@@ -155,32 +168,10 @@ export default function AdminDashboardLayout({ children }: AdminDashboardLayoutP
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </aside>
+      </motion.aside>
 
       {/* Main content */}
-      <div className="lg:pl-64">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 h-16 bg-slate-800/80 backdrop-blur-xl border-b border-slate-700 flex items-center px-6">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="lg:hidden text-slate-400 hover:text-white mr-4"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold text-white">
-              {sidebarItems.find((item) => pathname === item.href || pathname.startsWith(item.href + '/'))?.title || 'Dashboard'}
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              {session?.user?.role === 'platformAdmin' ? 'Super Admin' : 'Suporte'}
-            </span>
-          </div>
-        </header>
-
+      <div className="lg:ml-72">
         {/* Page content */}
         <main className="p-6">
           <motion.div
