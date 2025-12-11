@@ -444,7 +444,12 @@ async function _createOrder(
 
     // Calcular totais
     let subtotal = 0
-    const validatedItems = []
+    const validatedItems: Array<{
+      productId: string
+      quantity: number
+      price: number
+      notes: string | null
+    }> = []
 
     for (const item of validatedData.items) {
       const product = await prisma.product.findUnique({

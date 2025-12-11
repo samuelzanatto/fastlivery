@@ -57,12 +57,7 @@ export async function GET(request: Request) {
         isActive: true,
         emailVerified: true,
         createdAt: true,
-        business: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        businessId: true,
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -176,12 +171,7 @@ export async function POST(request: Request) {
         isActive: true,
         emailVerified: true,
         createdAt: true,
-        business: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        businessId: true,
       },
     })
 

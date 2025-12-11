@@ -513,7 +513,7 @@ export default function UsersPage() {
                       </TableCell>
                       
                       <TableCell>
-                        {(canEdit || canDelete) && (
+                        {canEdit && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">

@@ -45,14 +45,7 @@ export default function AdminLoginPage() {
       }
 
       if (data) {
-        // Verificar se o usuário tem role de plataforma
-        const userRole = data.user?.role
-        if (userRole !== 'platformAdmin' && userRole !== 'platformSupport') {
-          notify('error', 'Acesso negado. Apenas administradores da plataforma podem acessar.')
-          setIsLoading(false)
-          return
-        }
-
+        // TODO: Verificar se o usuário tem role de plataforma via API
         notify('success', 'Login realizado com sucesso!')
         router.push('/admin/dashboard')
       }

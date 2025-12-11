@@ -44,12 +44,7 @@ export async function GET(
         isActive: true,
         emailVerified: true,
         createdAt: true,
-        business: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        businessId: true,
       },
     })
 
@@ -118,12 +113,7 @@ export async function PUT(
         isActive: true,
         emailVerified: true,
         createdAt: true,
-        business: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        businessId: true,
       },
     })
 

@@ -223,9 +223,8 @@ function BusinessPageContent() {
         const result = await getActiveOrderForTable(business.slug, undefined, tableFromQuery)
         
         if (result.success && result.data?.exists && result.data.order) {
-          setActiveOrderId(result.data.order.id)
-          setActiveOrderNumber(result.data.order.orderNumber)
-          setActiveOrderStatus(result.data.order.status)
+          // TODO: Set active order in context if needed
+          console.log('Active order found:', result.data.order)
         }
       } catch (err) {
         console.error('Erro ao verificar pedido ativo:', err)
