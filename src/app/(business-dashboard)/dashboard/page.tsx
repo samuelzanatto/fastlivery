@@ -22,67 +22,63 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
-// Mock data para demonstração - em produção virá da API
-const mockStats = {
-  totalOrders: 156,
-  totalRevenue: 12340.50,
-  totalProducts: 42,
-  totalCustomers: 89,
-  pendingOrders: 8,
-  completedOrdersToday: 23,
-  averageOrderValue: 67.80,
-  topSellingProduct: 'Pizza Margherita'
-}
-
-const mockRecentOrders = [
-  {
-    id: '001',
-    customer: 'João Silva',
-    items: 2,
-    total: 45.90,
-    status: 'preparing',
-    time: '12:30'
-  },
-  {
-    id: '002',
-    customer: 'Maria Santos',
-    items: 1,
-    total: 28.50,
-    status: 'ready',
-    time: '12:15'
-  },
-  {
-    id: '003',
-    customer: 'Pedro Costa',
-    items: 3,
-    total: 78.20,
-    status: 'delivered',
-    time: '11:45'
+type DashboardData = {
+  stats: {
+    todaySales: number
+    todayOrders: number
+    uniqueCustomers: number
+    avgDeliveryTime: number
+    pendingOrders: number
   }
-]
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'preparing': return 'bg-yellow-100 text-yellow-800'
-    case 'ready': return 'bg-blue-100 text-blue-800'
-    case 'delivered': return 'bg-green-100 text-green-800'
-    default: return 'bg-gray-100 text-gray-800'
+  recentOrders: Array<{
+    id: string | null
+    customer: string | null
+    items: string
+    total: number
+    status: string
+    createdAt: string
+    type: string | null
+  }>
+  business: {
+    name: string
+    isOpen: boolean
+    plan: string
   }
 }
 
-const getStatusText = (status: string) => {
-  switch (status) {
-    case 'preparing': return 'Preparando'
-    case 'ready': return 'Pronto'
-    case 'delivered': return 'Entregue'
-    default: return status
-  }
+const statusColors: Record<string, string> = {
+  PENDING: 'bg-yellow-100 text-yellow-800',
+  CONFIRMED: 'bg-blue-100 text-blue-800',
+  PREPARING: 'bg-orange-100 text-orange-800',
+  READY: 'bg-emerald-100 text-emerald-800',
+  OUT_FOR_DELIVERY: 'bg-indigo-100 text-indigo-800',
+  DELIVERED: 'bg-green-100 text-green-800',
+  CANCELLED: 'bg-gray-100 text-gray-800',
 }
+
+const statusTexts: Record<string, string> = {
+  PENDING: 'Pendente',
+  CONFIRMED: 'Confirmado',
+  PREPARING: 'Preparando',
+  READY: 'Pronto',
+  OUT_FOR_DELIVERY: 'Em entrega',
+  DELIVERED: 'Entregue',
+  CANCELLED: 'Cancelado',
+}
+
+const formatCurrency = (value: number) =>
+  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+const formatTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
 export default function DashboardPage() {
   const router = useRouter()
   const { data: session, isPending } = useSession()
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [isLoadingData, setIsLoadingData] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -100,6 +96,26 @@ export default function DashboardPage() {
       }
     }
   }, [session, isPending, router])
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch('/api/dashboard/overview')
+        if (!res.ok) {
+          throw new Error('Falha ao carregar dados do dashboard')
+        }
+        const payload = (await res.json()) as DashboardData
+        setData(payload)
+      } catch (err) {
+        console.error(err)
+        setError('Não foi possível carregar os dados em tempo real.')
+      } finally {
+        setIsLoadingData(false)
+      }
+    }
+
+    load()
+  }, [])
 
   // Loading state
   if (isPending || !session) {
@@ -120,11 +136,16 @@ export default function DashboardPage() {
       {/* Header */}
       <DashboardHeader
         title="Dashboard"
-        description="Bem-vindo de volta! Aqui está um resumo do seu negócio."
+        description={data?.business?.name || 'Bem-vindo de volta! Aqui está um resumo do seu negócio.'}
       >
         <div className="text-sm text-muted-foreground mr-2">
           {currentTime.toLocaleDateString('pt-BR')} - {currentTime.toLocaleTimeString('pt-BR')}
         </div>
+        {data?.business && (
+          <Badge variant={data.business.isOpen ? 'default' : 'outline'} className="mr-2">
+            {data.business.isOpen ? 'Aberto' : 'Fechado'} · Plano {data.business.plan}
+          </Badge>
+        )}
         <DashboardHeaderButton asChild>
           <Link href="/orders/new">
             <Plus className="mr-2 h-4 w-4" />
@@ -133,21 +154,27 @@ export default function DashboardPage() {
         </DashboardHeaderButton>
       </DashboardHeader>
 
+      {error && (
+        <div className="rounded-md bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Receita Total
+              Receita de hoje
             </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              R$ {mockStats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {data ? formatCurrency(data.stats.todaySales) : '—'}
             </div>
             <p className="text-xs text-muted-foreground">
-              +20.1% em relação ao mês passado
+              Atualizado com pedidos do dia
             </p>
           </CardContent>
         </Card>
@@ -160,9 +187,9 @@ export default function DashboardPage() {
             <ShoppingBag className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStats.totalOrders}</div>
+            <div className="text-2xl font-bold">{data ? data.stats.todayOrders : '—'}</div>
             <p className="text-xs text-muted-foreground">
-              +{mockStats.completedOrdersToday} completados hoje
+              {data ? `${data.stats.pendingOrders} pendentes` : 'Carregando...'}
             </p>
           </CardContent>
         </Card>
@@ -170,14 +197,14 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Produtos
+              Pedidos pendentes
             </CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStats.totalProducts}</div>
+            <div className="text-2xl font-bold">{data ? data.stats.pendingOrders : '—'}</div>
             <p className="text-xs text-muted-foreground">
-              {mockStats.pendingOrders} pedidos pendentes
+              Em preparo ou aguardando confirmação
             </p>
           </CardContent>
         </Card>
@@ -185,14 +212,16 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Clientes
+              Clientes únicos (hoje)
             </CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStats.totalCustomers}</div>
+            <div className="text-2xl font-bold">{data ? data.stats.uniqueCustomers : '—'}</div>
             <p className="text-xs text-muted-foreground">
-              Ticket médio: R$ {mockStats.averageOrderValue.toFixed(2)}
+              {data && data.stats.todayOrders > 0
+                ? `Ticket médio: ${formatCurrency(data.stats.todaySales / data.stats.todayOrders)}`
+                : 'Ticket médio: —'}
             </p>
           </CardContent>
         </Card>
@@ -208,28 +237,34 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {mockRecentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div>
-                      <p className="text-sm font-medium leading-none">{order.customer}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {order.items} item(s) - {order.time}
-                      </p>
+            {isLoadingData ? (
+              <div className="text-sm text-muted-foreground">Carregando pedidos...</div>
+            ) : data?.recentOrders?.length ? (
+              <div className="space-y-4">
+                {data.recentOrders.map((order) => (
+                  <div key={order.id ?? order.createdAt} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <p className="text-sm font-medium leading-none">{order.customer ?? 'Cliente'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {order.items || '—'} · {formatTime(order.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Badge className={statusColors[order.status] || 'bg-gray-100 text-gray-800'}>
+                        {statusTexts[order.status] || order.status}
+                      </Badge>
+                      <div className="text-sm font-medium">
+                        {formatCurrency(order.total)}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge className={getStatusColor(order.status)}>
-                      {getStatusText(order.status)}
-                    </Badge>
-                    <div className="text-sm font-medium">
-                      R$ {order.total.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">Nenhum pedido ainda hoje.</div>
+            )}
             <div className="mt-4">
               <Button variant="outline" className="w-full" asChild>
                 <Link href="/orders">
@@ -292,14 +327,16 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Produto Mais Vendido</CardTitle>
+            <CardTitle className="text-sm font-medium">Ticket médio (hoje)</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-bold">{mockStats.topSellingProduct}</div>
-            <p className="text-xs text-muted-foreground">
-              Baseado nos pedidos desta semana
-            </p>
+            <div className="text-lg font-bold">
+              {data && data.stats.todayOrders > 0
+                ? formatCurrency(data.stats.todaySales / data.stats.todayOrders)
+                : '—'}
+            </div>
+            <p className="text-xs text-muted-foreground">Atualizado com pedidos do dia</p>
           </CardContent>
         </Card>
 
@@ -309,22 +346,22 @@ export default function DashboardPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-bold">18 min</div>
-            <p className="text-xs text-muted-foreground">
-              -2 min em relação à semana passada
-            </p>
+            <div className="text-lg font-bold">{data ? `${data.stats.avgDeliveryTime} min` : '—'}</div>
+            <p className="text-xs text-muted-foreground">Estimativa baseada nos pedidos recentes</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Próxima Meta</CardTitle>
+            <CardTitle className="text-sm font-medium">Status do restaurante</CardTitle>
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-bold">200 pedidos</div>
+            <div className="text-lg font-bold">
+              {data ? (data.business.isOpen ? 'Aberto para pedidos' : 'Fechado') : '—'}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Faltam 44 para atingir a meta mensal
+              Plano {data?.business.plan ?? '—'}
             </p>
           </CardContent>
         </Card>

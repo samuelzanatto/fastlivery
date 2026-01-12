@@ -167,7 +167,7 @@ export async function POST(request: Request) {
         })
 
         // TODO: Enviar email com link de setup de senha
-        console.log(`[ADMIN] Link de setup para ${ownerEmail}: /setup-password?token=${resetToken}`)
+        console.log(`[ADMIN] Link de setup para ${ownerEmail}: /setup-password/${resetToken}`)
       })
 
       finalOwnerId = newOwnerId

@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth/auth'
 import { prisma } from '@/lib/database/prisma'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
+import nodemailer from 'nodemailer'
 
 // Verificar se é admin da plataforma
 async function verifyPlatformAdmin() {
@@ -20,6 +21,36 @@ async function verifyPlatformAdmin() {
   }
 
   return { session }
+}
+
+async function sendSetupEmail(to: string, token: string) {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    throw new Error('Configuração SMTP ausente (SMTP_HOST/SMTP_USER/SMTP_PASS)')
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_PORT === '465',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  })
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const link = `${baseUrl}/setup-password/${token}`
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to,
+    subject: 'Defina sua senha no FastLivery',
+    html: `
+      <p>Você foi convidado(a) para acessar o painel do FastLivery.</p>
+      <p>Defina sua senha pelo link abaixo (válido por 7 dias):</p>
+      <p><a href="${link}">${link}</a></p>
+      <p>Se não foi você, ignore este email.</p>
+    `,
+  })
+
+  return link
 }
 
 // GET - Listar todos os usuários
@@ -147,8 +178,12 @@ export async function POST(request: Request) {
           },
         })
 
-        // TODO: Enviar email com link de setup
-        console.log(`[ADMIN] Link de setup para ${email}: /setup-password?token=${resetToken}`)
+        try {
+          const link = await sendSetupEmail(email, resetToken)
+          console.log(`[ADMIN] Link de setup para ${email}: ${link}`)
+        } catch (err) {
+          console.error('Falha ao enviar email de setup:', err)
+        }
       }
 
       // Se associou a uma empresa, atualizar o ownerId dela

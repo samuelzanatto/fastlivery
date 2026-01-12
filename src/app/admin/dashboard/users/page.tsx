@@ -13,6 +13,7 @@ import {
   Shield,
   Building2,
   User,
+  Mail,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -61,6 +62,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<UserData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [resendingId, setResendingId] = useState<string | null>(null)
 
   const fetchUsers = async () => {
     try {
@@ -100,6 +102,31 @@ export default function UsersPage() {
     } catch (error) {
       console.error('Erro:', error)
       notify('error', 'Erro ao excluir usuário')
+    }
+  }
+
+  const handleResendSetup = async (userId: string) => {
+    setResendingId(userId)
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/resend-setup`, {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const link = data?.link as string | undefined
+        notify('success', 'Convite reenviado', {
+          description: link ? `Link: ${link}` : 'Verifique o e-mail do usuário.',
+        })
+      } else {
+        const err = await response.json().catch(() => ({}))
+        notify('error', err.message || 'Não foi possível reenviar o convite')
+      }
+    } catch (error) {
+      console.error('Erro:', error)
+      notify('error', 'Erro ao reenviar convite')
+    } finally {
+      setResendingId(null)
     }
   }
 
@@ -250,6 +277,16 @@ export default function UsersPage() {
                               Editar
                             </Link>
                           </DropdownMenuItem>
+                          {!user.emailVerified && (
+                            <DropdownMenuItem
+                              disabled={resendingId === user.id}
+                              onClick={() => handleResendSetup(user.id)}
+                              className="text-slate-300 focus:text-white focus:bg-slate-700"
+                            >
+                              <Mail className="w-4 h-4 mr-2" />
+                              {resendingId === user.id ? 'Reenviando...' : 'Reenviar convite'}
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator className="bg-slate-700" />
                           <DropdownMenuItem
                             onClick={() => handleDelete(user.id)}

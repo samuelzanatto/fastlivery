@@ -124,6 +124,14 @@ export async function PUT(
   }
 }
 
+// PATCH - alias para PUT (compat)
+export async function PATCH(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  return PUT(request, ctx)
+}
+
 // DELETE - Excluir usuário
 export async function DELETE(
   request: Request,
