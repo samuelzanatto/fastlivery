@@ -193,3 +193,74 @@ export async function sendNewOrderPushNotification(
     return { success: false, error: 'Erro de conexão' }
   }
 }
+
+/**
+ * Envia notificação de itens adicionados a um pedido (server-side)
+ * Notifica funcionários do dashboard
+ */
+export async function sendOrderItemsAddedPushNotification(
+  options: {
+    businessId: string
+    businessName: string
+    businessLogo?: string | null
+    orderId: string
+    orderNumber: string | number
+    tableNumber?: string | null
+    itemsAdded: number
+    addedTotal: number
+  }
+): Promise<{ success: boolean; sent?: number; error?: string }> {
+  const { businessId, businessName, businessLogo, orderId, orderNumber, tableNumber, itemsAdded, addedTotal } = options
+
+  const tableInfo = tableNumber ? ` (Mesa ${tableNumber})` : ''
+  const notification = {
+    title: `➕ Itens Adicionados #${orderNumber}${tableInfo}`,
+    body: `+${itemsAdded} item(s) adicionado(s) - R$ ${addedTotal.toFixed(2)}`,
+    icon: businessLogo || '/icons/icon-192x192.png',
+    badge: '/icons/badge-72x72.png',
+    tag: `items-added-${orderId}`,
+    requireInteraction: true,
+    data: {
+      type: 'items-added',
+      orderId,
+      orderNumber,
+      tableNumber,
+      url: `/orders`
+    },
+    actions: [
+      {
+        action: 'view',
+        title: 'Ver Pedido'
+      }
+    ]
+  }
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/send-push-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+      },
+      body: JSON.stringify({
+        businessId,
+        notification
+        // Não passa userId para enviar para todos os funcionários
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[Push] Erro ao enviar notificação de itens adicionados:', errorText)
+      return { success: false, error: 'Erro ao enviar notificação' }
+    }
+
+    const result = await response.json()
+    console.log(`[Push] Notificação de itens adicionados enviada:`, result)
+    return { success: true, sent: result.sent || 0 }
+
+  } catch (error) {
+    console.error('[Push] Erro ao enviar notificação de itens adicionados:', error)
+    return { success: false, error: 'Erro de conexão' }
+  }
+}

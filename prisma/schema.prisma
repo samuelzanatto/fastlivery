@@ -713,3 +713,16 @@ enum SenderType {
   CUSTOMER
   BUSINESS
 }
+
+model ClientSession {
+  deviceId      String    @id
+  orderId       String
+  businessSlug  String
+  tableNumber   String?
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime
+  
+  @@index([orderId])
+  @@index([businessSlug])
+  @@index([expiresAt])
+}

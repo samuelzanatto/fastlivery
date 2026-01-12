@@ -7,7 +7,6 @@ import {
   Search, 
   MoreVertical, 
   Edit2, 
-  Trash2, 
   Shield,
   Check,
   X
@@ -57,7 +56,6 @@ import {
   getEmployees, 
   createEmployee, 
   updateEmployee, 
-  removeEmployee,
   type Employee,
   type EmployeeCreateInput,
   type EmployeeUpdateInput 
@@ -81,7 +79,6 @@ export default function UsersPage() {
   const canView = hasPermission('employees', 'view') || hasPermission('employees', 'manage') || isOwner || canManage
   const canCreate = hasPermission('employees', 'create') || hasPermission('employees', 'manage') || isOwner || canManage
   const canEdit = hasPermission('employees', 'update') || hasPermission('employees', 'manage') || isOwner || canManage
-  const canDelete = hasPermission('employees', 'delete') || hasPermission('employees', 'manage') || isOwner || canManage
   
   const [employees, setEmployees] = useState<Employee[]>([])
   const [roles, setRoles] = useState<Role[]>([])
@@ -226,26 +223,6 @@ export default function UsersPage() {
     } catch (error) {
       console.error('Erro ao atualizar funcionário:', error)
       notify('error', 'Erro ao atualizar funcionário', { 
-        description: error instanceof Error ? error.message : 'Erro desconhecido' 
-      })
-    }
-  }
-
-  const handleDeactivateEmployee = async (employeeId: string) => {
-    if (!confirm('Deseja realmente desativar este funcionário?')) return
-    
-    try {
-      const result = await removeEmployee(employeeId)
-
-      if (result.success) {
-        await fetchEmployees()
-        notify('success', 'Funcionário desativado com sucesso!')
-      } else {
-        throw new Error(result.error || 'Erro ao desativar funcionário')
-      }
-    } catch (error) {
-      console.error('Erro ao desativar funcionário:', error)
-      notify('error', 'Erro ao desativar funcionário', { 
         description: error instanceof Error ? error.message : 'Erro desconhecido' 
       })
     }
@@ -536,7 +513,7 @@ export default function UsersPage() {
                       </TableCell>
                       
                       <TableCell>
-                        {(canEdit || canDelete) && (
+                        {canEdit && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">
@@ -580,16 +557,6 @@ export default function UsersPage() {
                                   Ativar
                                 </>
                               )}
-                            </DropdownMenuItem>
-                            )}
-                            
-                            {canDelete && (
-                            <DropdownMenuItem
-                              onClick={() => handleDeactivateEmployee(employee.id)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Remover
                             </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>

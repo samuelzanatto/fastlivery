@@ -7,12 +7,15 @@ import {
   type RealtimeMessage, 
   type OrderRealtimePayload 
 } from '../types'
+import { supabase } from '@/lib/supabase'
 
 interface BusinessOrder {
   id: string
   orderNumber: string
   status: string
   type: string
+  tableId?: string | null
+  tableNumber?: string | null
   customerName: string
   customerPhone: string
   total: number
@@ -44,6 +47,7 @@ export function useBusinessOrdersRealtime({
 }: UseBusinessOrdersRealtimeOptions) {
   const [orders, setOrders] = useState<BusinessOrder[]>([])
   const [newOrderCount, setNewOrderCount] = useState(0)
+  const tableCacheRef = useRef<Record<string, string>>({})
 
   // Use refs para evitar problemas de dependências
   const callbacksRef = useRef({
@@ -61,8 +65,49 @@ export function useBusinessOrdersRealtime({
     }
   }, [onOrderCreated, onOrderUpdated, onOrderStatusChanged])
 
+  // Pré-carrega mapa de mesas para evitar "Mesa ?" em eventos recém-chegados
+  useEffect(() => {
+    if (!businessId) return
+    supabase
+      .from('tables')
+      .select('id, number')
+      .eq('businessId', businessId)
+      .then(({ data, error }) => {
+        console.log('[useBusinessOrdersRealtime] Tabelas carregadas:', data?.length, error)
+        if (error || !data) return
+        const map: Record<string, string> = {}
+        for (const row of data) {
+          if (row.id && row.number) {
+            map[row.id] = row.number as string
+          }
+        }
+        tableCacheRef.current = { ...tableCacheRef.current, ...map }
+        console.log('[useBusinessOrdersRealtime] Cache de mesas:', tableCacheRef.current)
+      })
+  }, [businessId])
+
   const handleMessage = useCallback((message: RealtimeMessage) => {
     console.log('[useBusinessOrdersRealtime] Mensagem recebida:', message.type, message)
+
+    const hydrateTableNumber = async (o: BusinessOrder): Promise<BusinessOrder> => {
+      if (o.type !== 'DINE_IN' && o.type !== 'dine-in') return o
+      if (!o.tableId || o.tableNumber) return o
+      if (tableCacheRef.current[o.tableId]) {
+        return { ...o, tableNumber: tableCacheRef.current[o.tableId] }
+      }
+      const { data, error } = await supabase
+        .from('tables')
+        .select('number')
+        .eq('id', o.tableId)
+        .limit(1)
+        .maybeSingle()
+      if (!error && data?.number) {
+        tableCacheRef.current[o.tableId] = data.number
+        return { ...o, tableNumber: data.number }
+      }
+      // último recurso: retorna mesa como "?" só se realmente não acharmos
+      return { ...o, tableNumber: o.tableNumber ?? null }
+    }
 
     // Tratar mensagens do postgres_changes (database_insert, database_update, database_delete)
     if (message.type === 'database_insert' || message.type === 'database_update' || message.type === 'database_delete') {
@@ -82,18 +127,23 @@ export function useBusinessOrdersRealtime({
       // Verificar businessId
       if (newData?.businessId !== businessId && oldData?.businessId !== businessId) return
 
+      // Supabase retorna snake_case do banco
+      const tableId = (newData?.tableId || newData?.table_id || oldData?.tableId || oldData?.table_id) as string | undefined
       const order: BusinessOrder = {
         id: (newData?.id || oldData?.id) as string,
-        orderNumber: (newData?.orderNumber || oldData?.orderNumber) as string,
+        orderNumber: (newData?.orderNumber || newData?.order_number || oldData?.orderNumber || oldData?.order_number) as string,
         status: (newData?.status || oldData?.status) as string,
         type: (newData?.type || oldData?.type) as string,
-        customerName: (newData?.customerName || oldData?.customerName) as string,
-        customerPhone: (newData?.customerPhone || oldData?.customerPhone) as string,
+        tableId,
+        tableNumber: tableId ? tableCacheRef.current[tableId] || null : null,
+        customerName: (newData?.customerName || newData?.customer_name || oldData?.customerName || oldData?.customer_name) as string,
+        customerPhone: (newData?.customerPhone || newData?.customer_phone || oldData?.customerPhone || oldData?.customer_phone) as string,
         total: (newData?.total || oldData?.total) as number,
         items: [], // Items precisam ser buscados separadamente
-        createdAt: (newData?.createdAt || oldData?.createdAt) as string,
-        updatedAt: (newData?.updatedAt || oldData?.updatedAt) as string
+        createdAt: (newData?.createdAt || newData?.created_at || oldData?.createdAt || oldData?.created_at) as string,
+        updatedAt: (newData?.updatedAt || newData?.updated_at || oldData?.updatedAt || oldData?.updated_at) as string
       }
+      console.log('[useBusinessOrdersRealtime] Order tableId:', tableId, 'tableNumber:', order.tableNumber, 'cache:', tableCacheRef.current)
 
       if (message.type === 'database_insert') {
         console.log('[useBusinessOrdersRealtime] Novo pedido via postgres_changes:', order.orderNumber)
@@ -101,8 +151,11 @@ export function useBusinessOrdersRealtime({
           const exists = prev.find(o => o.id === order.id)
           if (!exists) {
             setNewOrderCount(count => count + 1)
-            callbacksRef.current.onOrderCreated?.(order)
-            return [order, ...prev]
+            hydrateTableNumber(order).then((hydrated) => {
+              callbacksRef.current.onOrderCreated?.(hydrated)
+              setOrders(current => current.some(o => o.id === hydrated.id) ? current : [hydrated, ...current])
+            })
+            return prev
           }
           return prev
         })
@@ -117,16 +170,17 @@ export function useBusinessOrdersRealtime({
           callbacksRef.current.onOrderUpdated?.(order)
         }
 
-        setOrders(prev => {
-          const exists = prev.find(o => o.id === order.id)
-          if (exists) {
-            return prev.map(o => o.id === order.id ? { ...o, ...order } : o)
-          } else {
-            // Pedido não existe ainda, adicionar
-            setNewOrderCount(count => count + 1)
-            callbacksRef.current.onOrderCreated?.(order)
-            return [order, ...prev]
-          }
+        hydrateTableNumber(order).then((hydrated) => {
+          setOrders(prev => {
+            const exists = prev.find(o => o.id === hydrated.id)
+            if (exists) {
+              return prev.map(o => o.id === hydrated.id ? { ...o, ...hydrated } : o)
+            } else {
+              setNewOrderCount(count => count + 1)
+              callbacksRef.current.onOrderCreated?.(hydrated)
+              return [hydrated, ...prev]
+            }
+          })
         })
       }
       return
@@ -141,6 +195,8 @@ export function useBusinessOrdersRealtime({
       orderNumber: payload.orderNumber,
       status: payload.status,
       type: payload.type,
+        tableId: (payload as { tableId?: string }).tableId,
+        tableNumber: (payload as { tableNumber?: string }).tableNumber,
       customerName: payload.customerName,
       customerPhone: payload.customerPhone,
       total: payload.total,
@@ -149,35 +205,39 @@ export function useBusinessOrdersRealtime({
       updatedAt: payload.updatedAt
     }
 
-    switch (message.type) {
+    const handleHydrated = (hydrated: BusinessOrder) => {
+      switch (message.type) {
       case 'business_order_created':
         setOrders(prev => {
           const exists = prev.find(o => o.id === order.id)
           if (!exists) {
             setNewOrderCount(count => count + 1)
-            callbacksRef.current.onOrderCreated?.(order)
-            return [order, ...prev]
+            callbacksRef.current.onOrderCreated?.(hydrated)
+            return [hydrated, ...prev]
           }
           return prev
         })
         break
 
       case 'business_order_updated':
-        setOrders(prev => prev.map(o => o.id === order.id ? order : o))
-        callbacksRef.current.onOrderUpdated?.(order)
+        setOrders(prev => prev.map(o => o.id === order.id ? hydrated : o))
+        callbacksRef.current.onOrderUpdated?.(hydrated)
         break
 
       case 'business_order_status_changed':
         setOrders(prev => prev.map(o => {
           if (o.id === order.id) {
             const oldStatus = o.status
-            callbacksRef.current.onOrderStatusChanged?.(order, oldStatus)
-            return order
+            callbacksRef.current.onOrderStatusChanged?.(hydrated, oldStatus)
+            return hydrated
           }
           return o
         }))
         break
     }
+    }
+
+    hydrateTableNumber(order).then(handleHydrated)
   }, [businessId])
 
   const channelName = getBusinessOrdersChannel(businessId)

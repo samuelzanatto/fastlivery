@@ -412,9 +412,44 @@ async function _createOrder(
       }
     }
 
+    let tableForOrder: { id: string } | null = null
+
+    if (validatedData.type === 'DINE_IN') {
+      if (!validatedData.tableId) {
+        return {
+          success: false,
+          error: 'Número/ID da mesa é obrigatório para pedidos no local',
+          code: 'TABLE_REQUIRED'
+        }
+      }
+
+      const table = await prisma.table.findFirst({
+        where: {
+          id: validatedData.tableId,
+          businessId
+        },
+        select: { id: true }
+      })
+
+      if (!table) {
+        return {
+          success: false,
+          error: 'Mesa não encontrada para este negócio',
+          code: 'TABLE_NOT_FOUND'
+        }
+      }
+
+      tableForOrder = { id: table.id }
+    }
+
     // Calcular totais
     let subtotal = 0
-    const validatedItems = []
+    const validatedItems: Array<{
+      productId: string
+      quantity: number
+      price: number
+      notes: string | null
+    }> = []
 
     for (const item of validatedData.items) {
       const product = await prisma.product.findUnique({
@@ -457,24 +492,35 @@ async function _createOrder(
     const orderNumber = `PED${Date.now()}`
 
     // Criar pedido
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        type: validatedData.type,
-        businessId,
-        customerName: validatedData.customerName,
-        customerPhone: validatedData.customerPhone,
-        customerEmail: validatedData.customerEmail,
-        deliveryAddress: validatedData.type === 'DELIVERY' ? validatedData.deliveryAddress : null,
-        tableId: validatedData.type === 'DINE_IN' ? validatedData.tableId : null,
-        notes: validatedData.notes,
-        subtotal,
-        deliveryFee,
-        total,
-        items: {
-          create: validatedItems
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          orderNumber,
+          type: validatedData.type,
+          businessId,
+          customerName: validatedData.customerName,
+          customerPhone: validatedData.customerPhone,
+          customerEmail: validatedData.customerEmail,
+          deliveryAddress: validatedData.type === 'DELIVERY' ? validatedData.deliveryAddress : null,
+          tableId: validatedData.type === 'DINE_IN' ? tableForOrder?.id ?? null : null,
+          notes: validatedData.notes,
+          subtotal,
+          deliveryFee,
+          total,
+          items: {
+            create: validatedItems
+          }
         }
+      })
+
+      if (tableForOrder) {
+        await tx.table.update({
+          where: { id: tableForOrder.id },
+          data: { isOccupied: true }
+        })
       }
+
+      return created
     })
 
     // Log para monitoring
@@ -519,21 +565,34 @@ async function _updateOrderStatus(
   try {
     const validatedId = validateId(orderId, 'ID do pedido')
 
-    const order = await prisma.order.update({
-      where: {
-        id: validatedId,
-        businessId: business.id
-      },
-      data: { status },
-      include: {
-        items: {
-          include: {
-            product: { select: { name: true } }
-          }
+    const terminalStatuses: OrderStatus[] = ['DELIVERED', 'CANCELLED']
+
+    const order = await prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: {
+          id: validatedId,
+          businessId: business.id
         },
-        table: { select: { number: true } },
-        user: { select: { id: true } }
+        data: { status },
+        include: {
+          items: {
+            include: {
+              product: { select: { name: true } }
+            }
+          },
+          table: { select: { id: true, number: true } },
+          user: { select: { id: true } }
+        }
+      })
+
+      if (updated.table && terminalStatuses.includes(status)) {
+        await tx.table.update({
+          where: { id: updated.table.id },
+          data: { isOccupied: false }
+        })
       }
+
+      return updated
     })
 
     // Envia push notification para o cliente (não bloqueia a resposta)

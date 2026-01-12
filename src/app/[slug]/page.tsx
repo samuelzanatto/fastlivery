@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from '@/lib/auth/auth-client'
 import { useAutoOpenClose } from '@/hooks/business/use-auto-open-close'
 import { useBusinessStatus } from '@/hooks/business/use-business-status'
@@ -10,7 +10,8 @@ import { parseOpeningHours, type WeeklyHours } from '@/lib/utils/business-hours'
 import { PWAHeader } from '@/components/layout/pwa-header'
 import { IntegratedCheckout } from '@/components/checkout/integrated-checkout'
 import { ProductOptionsModal } from '@/components/checkout/product-options-modal'
-import { CartProvider, useCart } from '@/contexts/cart-context'
+import { useCart } from '@/contexts/cart-context'
+import { useOrderTracking } from '@/contexts/order-tracking-context'
 import { getProductWithOptions } from '@/actions/products/products'
 import { PWAServiceWorker } from '@/components/pwa/pwa-service-worker'
 import { Button } from '@/components/ui/button'
@@ -99,9 +100,11 @@ interface Business {
 
 function BusinessPageContent() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const { data: session } = useSession()
   const { addItem, removeItem, getItemQuantity, addItemWithOptions } = useCart()
+  const { activeOrderId, setOrderCreated } = useOrderTracking()
   const [isLoading, setIsLoading] = useState(true)
   const [business, setBusiness] = useState<Business | null>(null)
   const [_products, setProducts] = useState<Product[]>([])
@@ -114,6 +117,15 @@ function BusinessPageContent() {
   // Estados para o modal de opções
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false)
+
+  const tableFromQuery = searchParams.get('table') || undefined
+
+  useEffect(() => {
+    if (tableFromQuery) {
+      setOrderType('DINE_IN')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableFromQuery])
 
   // Função para formatar horários de funcionamento
   const formatOpeningHours = (openingHours?: string | null): string => {
@@ -200,6 +212,27 @@ function BusinessPageContent() {
 
     validateBusiness()
   }, [params.slug, router])
+
+  // Verificar se já existe pedido ativo para a mesa (dine-in)
+  useEffect(() => {
+    const checkActiveOrder = async () => {
+      if (!tableFromQuery || !business?.slug) return
+      
+      try {
+        const { getActiveOrderForTable } = await import('@/actions/orders/public-orders')
+        const result = await getActiveOrderForTable(business.slug, undefined, tableFromQuery)
+        
+        if (result.success && result.data?.exists && result.data.order) {
+          // TODO: Set active order in context if needed
+          console.log('Active order found:', result.data.order)
+        }
+      } catch (err) {
+        console.error('Erro ao verificar pedido ativo:', err)
+      }
+    }
+    
+    checkActiveOrder()
+  }, [tableFromQuery, business?.slug])
 
   const addToCart = (product: Product) => {
     if (!business) return
@@ -306,14 +339,6 @@ function BusinessPageContent() {
   }
 
   const handleOrderTypeSelect = (type: 'DELIVERY' | 'PICKUP' | 'DINE_IN') => {
-    // Para delivery, verificar se o usuário está logado
-    if (type === 'DELIVERY') {
-      if (!session?.user) {
-        router.push(`/customer-login?redirectTo=${encodeURIComponent(`/${params.slug}`)}`)
-        return
-      }
-    }
-    
     setOrderType(type)
   }
 
@@ -535,6 +560,10 @@ function BusinessPageContent() {
         <IntegratedCheckout 
           businessSlug={params.slug as string} 
           businessStatus={businessStatus}
+          presetOrderType={orderType || undefined}
+          lockOrderType={!!orderType}
+          presetTableNumber={tableFromQuery}
+          lockTableNumber={!!tableFromQuery}
         />
       </div>
     )
@@ -798,6 +827,12 @@ function BusinessPageContent() {
       <IntegratedCheckout 
         businessSlug={params.slug as string} 
         businessStatus={businessStatus}
+        presetOrderType={orderType || undefined}
+        lockOrderType={!!orderType}
+        presetTableNumber={tableFromQuery}
+        lockTableNumber={!!tableFromQuery}
+        existingOrderId={activeOrderId || undefined}
+        onOrderCreated={setOrderCreated}
       />
       
       {/* Product Options Modal */}
@@ -815,9 +850,5 @@ function BusinessPageContent() {
 }
 
 export default function BusinessPage() {
-  return (
-    <CartProvider>
-      <BusinessPageContent />
-    </CartProvider>
-  )
+  return <BusinessPageContent />
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,7 +10,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useCart, CartItem } from '@/contexts/cart-context'
-import { createPublicOrder } from '@/actions/orders/public-orders'
+import { createPublicOrder, addItemsToOrder, getActiveOrderForTable } from '@/actions/orders/public-orders'
+import { useClientSession } from '@/hooks/use-client-session'
 import { 
   ShoppingBag, 
   Trash2, 
@@ -19,7 +21,8 @@ import {
   CreditCard,
   Banknote,
   X,
-  ChevronDown
+  ChevronDown,
+  AlertCircle
 } from 'lucide-react'
 
 interface BusinessStatus {
@@ -32,6 +35,12 @@ interface BusinessStatus {
 interface IntegratedCheckoutProps {
   businessSlug: string
   businessStatus: BusinessStatus | null
+  presetOrderType?: OrderType
+  lockOrderType?: boolean
+  presetTableNumber?: string
+  lockTableNumber?: boolean
+  existingOrderId?: string // Se já existe um pedido ativo para esta mesa
+  onOrderCreated?: (orderId: string, orderNumber: string) => void // Callback quando pedido é criado
 }
 
 type OrderType = 'DELIVERY' | 'PICKUP' | 'DINE_IN'
@@ -40,14 +49,29 @@ type CheckoutStep = 'cart' | 'details' | 'payment'
 
 export function IntegratedCheckout({
   businessSlug,
-  businessStatus
+  businessStatus,
+  presetOrderType,
+  lockOrderType,
+  presetTableNumber,
+  lockTableNumber,
+  existingOrderId: initialExistingOrderId,
+  onOrderCreated
 }: IntegratedCheckoutProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, getTotalItems } = useCart()
+  const { registerSession } = useClientSession()
   const [isExpanded, setIsExpanded] = useState(false)
   const [step, setStep] = useState<CheckoutStep>('cart')
   const [orderType, setOrderType] = useState<OrderType>('DELIVERY')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Estado para pedido existente (dine-in)
+  const [existingOrderId, setExistingOrderId] = useState<string | null>(initialExistingOrderId || searchParams.get('order') || null)
+  const [existingOrderNumber, setExistingOrderNumber] = useState<string | null>(null)
+  const [isCheckingExistingOrder, setIsCheckingExistingOrder] = useState(false)
+  const [tableNumber, setTableNumber] = useState('')
   
   // Customer info
   const [customerName, setCustomerName] = useState('')
@@ -69,6 +93,21 @@ export function IntegratedCheckout({
 
   const canAcceptOrders = businessStatus?.canAcceptOrders ?? true
 
+  // Verificar se já existe pedido ativo para a mesa (dine-in)
+  useEffect(() => {
+    if (orderType === 'DINE_IN' && presetTableNumber && !existingOrderId) {
+      setIsCheckingExistingOrder(true)
+      getActiveOrderForTable(businessSlug, undefined, presetTableNumber)
+        .then((result) => {
+          if (result.success && result.data?.exists && result.data.order) {
+            setExistingOrderId(result.data.order.id)
+            setExistingOrderNumber(result.data.order.orderNumber)
+          }
+        })
+        .finally(() => setIsCheckingExistingOrder(false))
+    }
+  }, [orderType, presetTableNumber, businessSlug, existingOrderId])
+
   // Fechar quando não há itens
   useEffect(() => {
     if (items.length === 0) {
@@ -76,6 +115,60 @@ export function IntegratedCheckout({
       setStep('cart')
     }
   }, [items.length])
+
+  // Sync preset order type from parent (e.g., delivery vs pickup chosen earlier)
+  useEffect(() => {
+    if (presetOrderType && presetOrderType !== orderType) {
+      setOrderType(presetOrderType)
+    }
+  }, [presetOrderType, orderType])
+
+  useEffect(() => {
+    if (presetTableNumber && presetTableNumber !== tableNumber) {
+      setTableNumber(presetTableNumber)
+    }
+  }, [presetTableNumber, tableNumber])
+
+  const isOrderTypeLocked = !!presetOrderType && lockOrderType !== false
+  const isTableNumberLocked = !!presetTableNumber && lockTableNumber !== false
+
+  // Handler para adicionar itens a pedido existente
+  const handleAddItemsToExisting = async () => {
+    if (!existingOrderId || items.length === 0) return
+
+    setIsSubmitting(true)
+    try {
+      const result = await addItemsToOrder({
+        orderId: existingOrderId,
+        businessSlug,
+        items: items.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.finalPrice,
+          notes: item.optionsText || undefined,
+          selectedOptions: item.selectedOptions
+        }))
+      })
+
+      if (result.success) {
+        clearCart()
+        setIsExpanded(false)
+        setStep('cart')
+        // Atualizar sessão e notificar adição de itens
+        if (existingOrderNumber) {
+          await registerSession(existingOrderId, businessSlug, tableNumber || presetTableNumber)
+          onOrderCreated?.(existingOrderId, existingOrderNumber)
+        }
+      } else {
+        alert(result.error || 'Erro ao adicionar itens')
+      }
+    } catch (error) {
+      console.error('Erro ao adicionar itens:', error)
+      alert('Erro ao adicionar itens ao pedido')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const handleSubmitOrder = async () => {
     if (!customerName || !customerPhone) {
@@ -86,7 +179,12 @@ export function IntegratedCheckout({
       return
     }
 
+    if (orderType === 'DINE_IN' && !tableNumber.trim()) {
+      return
+    }
+
     setIsSubmitting(true)
+
 
     try {
       const deliveryAddress = orderType === 'DELIVERY' 
@@ -102,6 +200,7 @@ export function IntegratedCheckout({
         customerEmail: customerEmail || undefined,
         notes: notes || undefined,
         deliveryAddress,
+        tableNumber: orderType === 'DINE_IN' ? tableNumber.trim() : undefined,
         items: items.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -126,6 +225,23 @@ export function IntegratedCheckout({
         setComplement('')
         setNeighborhood('')
         setCity('')
+        setTableNumber('')
+        
+        // Registrar sessão e notificar criação do pedido
+        if (result.data.id && result.data.orderNumber) {
+          // Registrar no banco de dados
+          await registerSession(result.data.id, businessSlug, tableNumber || presetTableNumber)
+          
+          // Chamar callback
+          onOrderCreated?.(result.data.id, result.data.orderNumber)
+        }
+      } else if (!result.success && (result as { code?: string }).code === 'ACTIVE_ORDER_EXISTS') {
+        // Já existe pedido ativo para esta mesa
+        const data = (result as { data?: { existingOrderId: string; existingOrderNumber: string } }).data
+        if (data?.existingOrderId) {
+          setExistingOrderId(data.existingOrderId)
+          setExistingOrderNumber(data.existingOrderNumber)
+        }
       }
     } catch (error) {
       console.error('Erro ao criar pedido:', error)
@@ -254,13 +370,43 @@ export function IntegratedCheckout({
                   </div>
                 </div>
 
-                <Button 
-                  className="w-full" 
-                  disabled={!canAcceptOrders}
-                  onClick={() => setStep('details')}
-                >
-                  {canAcceptOrders ? 'Continuar' : 'Estabelecimento fechado'}
-                </Button>
+                {/* Se já existe pedido para esta mesa, mostrar opção de adicionar itens */}
+                {existingOrderId && orderType === 'DINE_IN' ? (
+                  <div className="space-y-3">
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 text-amber-800 mb-2">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="font-medium text-sm">Mesa com pedido em andamento</span>
+                      </div>
+                      <p className="text-xs text-amber-700">
+                        Pedido #{existingOrderNumber || existingOrderId.slice(0, 8)} já está aberto para esta mesa.
+                      </p>
+                    </div>
+                    <Button 
+                      className="w-full bg-orange-500 hover:bg-orange-600" 
+                      disabled={isSubmitting || isCheckingExistingOrder}
+                      onClick={handleAddItemsToExisting}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      {isSubmitting ? 'Adicionando...' : 'Adicionar ao Pedido Existente'}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="w-full text-sm"
+                      onClick={() => router.push(`/${businessSlug}/pedido/${existingOrderId}`)}
+                    >
+                      Ver Pedido Atual
+                    </Button>
+                  </div>
+                ) : (
+                  <Button 
+                    className="w-full" 
+                    disabled={!canAcceptOrders || isCheckingExistingOrder}
+                    onClick={() => setStep('details')}
+                  >
+                    {isCheckingExistingOrder ? 'Verificando...' : canAcceptOrders ? 'Continuar' : 'Estabelecimento fechado'}
+                  </Button>
+                )}
               </motion.div>
             )}
 
@@ -282,7 +428,6 @@ export function IntegratedCheckout({
                     placeholder="Seu nome"
                   />
                 </div>
-                
                 <div>
                   <Label htmlFor="phone" className="mb-1 block">Telefone *</Label>
                   <Input
@@ -306,20 +451,28 @@ export function IntegratedCheckout({
 
                 <div>
                   <Label className="mb-2 block">Tipo de Pedido</Label>
-                  <RadioGroup 
-                    value={orderType} 
-                    onValueChange={(v) => setOrderType(v as OrderType)}
-                    className="mt-0"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="DELIVERY" id="delivery" />
-                      <Label htmlFor="delivery">Entrega</Label>
+                  {isOrderTypeLocked ? (
+                    <div className="p-3 border rounded-lg bg-slate-50 text-sm font-medium">
+                      {orderType === 'DELIVERY' && 'Entrega'}
+                      {orderType === 'PICKUP' && 'Retirada'}
+                      {orderType === 'DINE_IN' && 'Comer no local'}
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="PICKUP" id="pickup" />
-                      <Label htmlFor="pickup">Retirada</Label>
-                    </div>
-                  </RadioGroup>
+                  ) : (
+                    <RadioGroup 
+                      value={orderType} 
+                      onValueChange={(v) => setOrderType(v as OrderType)}
+                      className="mt-0"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="DELIVERY" id="delivery" />
+                        <Label htmlFor="delivery">Entrega</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="PICKUP" id="pickup" />
+                        <Label htmlFor="pickup">Retirada</Label>
+                      </div>
+                    </RadioGroup>
+                  )}
                 </div>
 
                 {orderType === 'DELIVERY' && (
@@ -355,6 +508,26 @@ export function IntegratedCheckout({
                       onChange={(e) => setCity(e.target.value)}
                       placeholder="Cidade *"
                     />
+                  </div>
+                )}
+
+                {orderType === 'DINE_IN' && (
+                  <div className="space-y-2 p-3 bg-slate-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      <Label>Número da mesa</Label>
+                    </div>
+                    {isTableNumberLocked ? (
+                      <div className="p-3 border rounded-lg bg-white text-sm font-medium">
+                        {tableNumber || 'Mesa não informada'}
+                      </div>
+                    ) : (
+                      <Input
+                        value={tableNumber}
+                        onChange={(e) => setTableNumber(e.target.value)}
+                        placeholder="Ex: 12"
+                      />
+                    )}
                   </div>
                 )}
 
@@ -465,7 +638,11 @@ export function IntegratedCheckout({
                   <Button 
                     className="flex-1"
                     onClick={handleSubmitOrder}
-                    disabled={isSubmitting}
+                    disabled={
+                      isSubmitting ||
+                      (orderType === 'DELIVERY' && (!street || !number || !neighborhood || !city)) ||
+                      (orderType === 'DINE_IN' && !tableNumber.trim())
+                    }
                   >
                     {isSubmitting ? 'Enviando...' : 'Finalizar Pedido'}
                   </Button>

@@ -42,6 +42,8 @@ export interface OrderRealtimePayload {
   orderNumber: string
   status: string
   type: string
+  tableId?: string | null
+  tableNumber?: string | null
   customerName: string
   customerPhone: string
   total: number
