@@ -311,7 +311,7 @@ const mapDbPaymentStatus = (raw?: string): PaymentStatus => {
     'CANCELLED', 'CANCELED', 'REFUNDED', 'CHARGED_BACK'
   ].includes(v)) return 'cancelled'
   return 'pending'
-}
+} 
 
 // ... imports
 // ... imports
