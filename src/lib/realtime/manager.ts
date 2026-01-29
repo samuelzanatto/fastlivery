@@ -11,7 +11,7 @@ export class RealtimeManager {
    * Inscreve-se em um canal do Supabase Realtime (broadcast + database changes)
    */
   subscribe(
-    channelName: string, 
+    channelName: string,
     callback: (message: RealtimeMessage) => void,
     options: { private?: boolean; table?: string; schema?: string } = { private: false }
   ): RealtimeChannelType {
@@ -22,7 +22,7 @@ export class RealtimeManager {
     // O banco envia com private=false, então o cliente também precisa usar false
     const requestedPrivate = options.private ?? false
     const channel = supabase.channel(channelName, {
-      config: { 
+      config: {
         private: requestedPrivate, // false = público para receber broadcasts do banco
         broadcast: { self: false },
         presence: { key: channelName }
@@ -34,18 +34,18 @@ export class RealtimeManager {
       try {
         const envObj = envelope as { payload?: RealtimeMessage; event?: string }
         const message = envObj.payload
-        
+
         if (!message || typeof message !== 'object') {
           console.debug('[RealtimeManager] Broadcast envelope sem payload válido:', envelope)
           return
         }
-        
+
         // Validar se é uma RealtimeMessage válida
         if (!('type' in message) || !('timestamp' in message)) {
           console.debug('[RealtimeManager] Broadcast payload não é RealtimeMessage válida:', message)
           return
         }
-        
+
         if (process.env.NODE_ENV === 'development') {
           console.debug(`[RealtimeManager] Broadcast no canal ${channelName}:`, {
             type: message.type,
@@ -70,7 +70,7 @@ export class RealtimeManager {
       }, (payload: unknown) => {
         try {
           console.log(`[RealtimeManager] ✅ Database change no canal ${channelName}:`, payload)
-          
+
           // Converter evento do banco em RealtimeMessage
           const dbEvent = payload as {
             eventType: string
@@ -82,8 +82,8 @@ export class RealtimeManager {
           }
 
           const messageType: RealtimeMessageType = dbEvent.eventType === 'INSERT' ? 'database_insert' :
-                                          dbEvent.eventType === 'UPDATE' ? 'database_update' :
-                                          dbEvent.eventType === 'DELETE' ? 'database_delete' : 'database_update'
+            dbEvent.eventType === 'UPDATE' ? 'database_update' :
+              dbEvent.eventType === 'DELETE' ? 'database_delete' : 'database_update'
 
           const realtimeMessage: RealtimeMessage = {
             id: crypto.randomUUID(),
@@ -117,9 +117,9 @@ export class RealtimeManager {
     let retryCount = 0
     const maxRetries = 3
     const baseDelay = 2000
-    
+
     const handleSubscription = (status: string) => {
-      
+
       if (status === 'SUBSCRIBED') {
         console.log(`✅ Conectado ao canal: ${channelName}`)
         retryCount = 0 // Reset contador em conexão bem-sucedida
@@ -143,7 +143,7 @@ export class RealtimeManager {
         }
       }
     }
-    
+
     channel.subscribe(handleSubscription)
 
     // Armazenar referências
@@ -179,7 +179,7 @@ export class RealtimeManager {
    * Envia uma mensagem para um canal específico
    */
   async sendMessage(
-    channelName: string, 
+    channelName: string,
     message: RealtimeMessage
   ): Promise<'ok' | 'error' | 'timed_out'> {
     const channel = this.channels.get(channelName)
@@ -194,7 +194,7 @@ export class RealtimeManager {
         event: message.type,
         payload: message
       })
-      
+
       // O response já é diretamente o status string
       return response as 'ok' | 'error' | 'timed_out'
     } catch (error) {
@@ -214,7 +214,7 @@ export class RealtimeManager {
     if (typeof window !== 'undefined') {
       throw new Error('sendMessageViaREST só pode ser chamado no servidor')
     }
-    
+
     try {
       const { supabaseAdmin } = await import('@/lib/supabase')
       const { error } = await supabaseAdmin.rpc('broadcast_message', {
@@ -252,25 +252,25 @@ export class RealtimeManager {
    * Agenda reconexão com backoff exponencial
    */
   private scheduleReconnect(
-    channelName: string, 
-    channel: RealtimeChannelType, 
-    retryCount: number, 
-    maxRetries: number, 
+    channelName: string,
+    channel: RealtimeChannelType,
+    retryCount: number,
+    maxRetries: number,
     baseDelay: number
   ): void {
     if (retryCount >= maxRetries) {
       console.error(`❌ Máximo de tentativas excedido para canal: ${channelName}`)
       return
     }
-    
+
     if (!this.channels.has(channelName)) {
       console.debug(`🚫 Canal ${channelName} removido, cancelando reconexão`)
       return
     }
-    
+
     const delay = Math.min(baseDelay * Math.pow(2, retryCount), 30000) // Máximo 30s
     console.log(`🔄 Reconectando canal ${channelName} em ${delay}ms (tentativa ${retryCount + 1}/${maxRetries})`)
-    
+
     setTimeout(() => {
       if (this.channels.has(channelName)) {
         channel.subscribe()

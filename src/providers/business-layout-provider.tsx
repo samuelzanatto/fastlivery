@@ -32,14 +32,14 @@ const BusinessLayoutContext = createContext<BusinessLayoutContextData>({
   avatarKey: 0,
   isLoading: true,
   error: null,
-  refreshAvatar: () => {},
-  refreshUserProfile: () => {}
+  refreshAvatar: () => { },
+  refreshUserProfile: () => { }
 })
 
 async function fetchUserProfile(): Promise<UserProfileData> {
   const { getCurrentUser } = await import('@/actions/users/profile')
   const result = await getCurrentUser()
-  
+
   if (!result.success) {
     throw new Error(result.error || 'Failed to fetch user profile')
   }
@@ -55,10 +55,10 @@ async function fetchUserProfile(): Promise<UserProfileData> {
 export function BusinessLayoutProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
   const [avatarKey, setAvatarKey] = useState(0)
-  
+
   // Usar SWR para fazer cache dos dados do usuário
-  const { 
-    data: userProfileData, 
+  const {
+    data: userProfileData,
     error,
     isLoading,
     mutate
@@ -103,9 +103,5 @@ export function BusinessLayoutProvider({ children }: { children: React.ReactNode
 }
 
 export function useBusinessLayout() {
-  const context = useContext(BusinessLayoutContext)
-  if (!context) {
-    throw new Error('useBusinessLayout must be used within BusinessLayoutProvider')
-  }
-  return context
+  return useContext(BusinessLayoutContext)
 }

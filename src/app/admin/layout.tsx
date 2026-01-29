@@ -32,11 +32,19 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       return
     }
 
+    console.log('[AdminLayout] Session check:', {
+      isPending,
+      hasSession: !!session,
+      role: (session?.user as any)?.role,
+      pathname
+    })
+
     // Se é página pública
     if (isPublicPage) {
       // Se já está logado como platformAdmin, redirecionar para dashboard
       const role = (session?.user as { role?: string } | undefined)?.role
       if (role === 'platformAdmin' || role === 'platformSupport') {
+        console.log('[AdminLayout] Public page but logged in as admin, redirecting to dashboard')
         router.replace('/admin/dashboard')
       } else {
         setIsAuthorized(true)
@@ -46,6 +54,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     // Se não está logado, redirecionar para login
     if (!session) {
+      console.log('[AdminLayout] Private page and no session, redirecting to login')
       setIsAuthorized(false)
       router.replace('/admin/login')
       return
@@ -54,6 +63,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     // Verificar se tem role de plataforma
     const role = (session.user as { role?: string } | undefined)?.role
     if (role !== 'platformAdmin' && role !== 'platformSupport') {
+      console.log('[AdminLayout] Invalid role for admin area:', role)
       setIsAuthorized(false)
       router.replace('/admin/login?error=access_denied')
       return

@@ -8,9 +8,9 @@ import {
   handleActionError,
   getAuthenticatedUser
 } from '@/lib/actions/auth-helpers'
-import { 
+import {
   validateData,
-  validateId 
+  validateId
 } from '@/lib/actions/validation-helpers'
 import { z } from 'zod'
 
@@ -64,17 +64,45 @@ export interface ChatMessage {
   isRead: boolean
 }
 
+// Helper para buscar conversas considerando telefone
+async function findConversationsQuery(userId: string) {
+  const dbUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { phone: true }
+  })
+
+  let phone = dbUser?.phone
+
+  // Se o usuário não tiver telefone no perfil, tentar buscar do último pedido
+  if (!phone) {
+    const lastOrder = await prisma.order.findFirst({
+      where: { userId: userId },
+      orderBy: { createdAt: 'desc' },
+      select: { customerPhone: true }
+    })
+    if (lastOrder?.customerPhone) {
+      phone = lastOrder.customerPhone
+    }
+  }
+
+  return {
+    OR: [
+      { customerId: userId },
+      ...(phone ? [{ customerPhone: phone }] : [])
+    ]
+  }
+}
+
 /**
  * Busca todas as conversas do usuário
  */
 async function _getConversations(): Promise<ActionResult<{ conversations: Conversation[] }>> {
   try {
     const user = await getAuthenticatedUser()
+    const whereCondition = await findConversationsQuery(user.id)
 
     const conversations = await prisma.conversation.findMany({
-      where: {
-        customerId: user.id
-      },
+      where: whereCondition,
       include: {
         business: {
           select: {
@@ -138,11 +166,12 @@ async function _getConversationDetails(conversationId: string): Promise<ActionRe
   try {
     const user = await getAuthenticatedUser()
     const validConversationId = validateId(conversationId, 'ID da conversa')
+    const whereCondition = await findConversationsQuery(user.id)
 
     const conversation = await prisma.conversation.findFirst({
       where: {
         id: validConversationId,
-        customerId: user.id
+        ...whereCondition
       },
       include: {
         business: {
@@ -164,6 +193,14 @@ async function _getConversationDetails(conversationId: string): Promise<ActionRe
 
     if (!conversation) {
       return handleActionError(new Error('Conversa não encontrada'))
+    }
+
+    // Auto-link se necessário (se achou por telefone)
+    if (!conversation.customerId) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { customerId: user.id }
+      })
     }
 
     const conversationDetails: ConversationDetails = {
@@ -199,17 +236,26 @@ async function _sendMessage(conversationId: string, data: { content: string }): 
     const user = await getAuthenticatedUser()
     const validConversationId = validateId(conversationId, 'ID da conversa')
     const validatedData = validateData(SendMessageSchema, data)
+    const whereCondition = await findConversationsQuery(user.id)
 
     // Verificar se a conversa existe e pertence ao usuário
-    const conversation = await prisma.conversation.findFirst({
+    let conversation = await prisma.conversation.findFirst({
       where: {
         id: validConversationId,
-        customerId: user.id
+        ...whereCondition
       }
     })
 
     if (!conversation) {
       return handleActionError(new Error('Conversa não encontrada'))
+    }
+
+    // Auto-link
+    if (!conversation.customerId) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { customerId: user.id }
+      })
     }
 
     // Criar a mensagem
@@ -255,12 +301,13 @@ async function _markMessagesAsRead(conversationId: string): Promise<ActionResult
   try {
     const user = await getAuthenticatedUser()
     const validConversationId = validateId(conversationId, 'ID da conversa')
+    const whereCondition = await findConversationsQuery(user.id)
 
     // Verificar se a conversa existe e pertence ao usuário
     const conversation = await prisma.conversation.findFirst({
       where: {
         id: validConversationId,
-        customerId: user.id
+        ...whereCondition
       }
     })
 

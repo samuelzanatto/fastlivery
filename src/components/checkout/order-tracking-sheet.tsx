@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Clock, 
-  CheckCircle, 
-  ChefHat, 
-  Package, 
+import {
+  Clock,
+  CheckCircle,
+  ChefHat,
+  Package,
   Truck,
   XCircle,
   Plus,
@@ -21,6 +21,7 @@ import {
 import Link from 'next/link'
 import { getPublicOrder, addItemsToOrder } from '@/actions/orders/public-orders'
 import { useCart } from '@/contexts/cart-context'
+import { supabase } from '@/lib/supabase'
 
 // Status mapping
 const STATUS_CONFIG = {
@@ -101,15 +102,15 @@ interface OrderTrackingSheetProps {
   onAddMoreItems?: () => void
 }
 
-export function OrderTrackingSheet({ 
-  orderId, 
-  businessSlug, 
-  isOpen, 
+export function OrderTrackingSheet({
+  orderId,
+  businessSlug,
+  isOpen,
   onClose,
-  onAddMoreItems 
+  onAddMoreItems
 }: OrderTrackingSheetProps) {
   const { items: cartItems, clearCart, getTotalPrice } = useCart()
-  
+
   const [order, setOrder] = useState<OrderData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -137,15 +138,31 @@ export function OrderTrackingSheet({
   useEffect(() => {
     if (isOpen && orderId) {
       loadOrder()
-      // Auto-refresh a cada 30s para pedidos ativos
-      const interval = setInterval(() => {
-        if (order && ADDABLE_STATUSES.includes(order.status)) {
-          loadOrder()
-        }
-      }, 30000)
-      return () => clearInterval(interval)
+
+      // Inscrever no Realtime para atualizações instantâneas
+      console.log('[OrderTrackingSheet] Monitorando pedido:', orderId)
+      const channel = supabase
+        .channel(`tracking_sheet_${orderId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // Escutar qualquer mudança (UPDATE, etc)
+            schema: 'public',
+            table: 'orders',
+            filter: `id=eq.${orderId}`
+          },
+          (payload) => {
+            console.log('[OrderTrackingSheet] Atualização recebida:', payload)
+            loadOrder()
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
-  }, [isOpen, orderId, loadOrder, order])
+  }, [isOpen, orderId, loadOrder])
 
   const handleAddItems = async () => {
     if (cartItems.length === 0 || !order) return
@@ -199,23 +216,30 @@ export function OrderTrackingSheet({
             className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
             onClick={onClose}
           />
-          
+
           {/* Bottom Sheet */}
           <motion.div
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 ${
-              isExpanded ? 'max-h-[90vh]' : 'max-h-[60vh]'
-            } overflow-hidden flex flex-col`}
+            drag={order?.status === 'DELIVERED' ? 'y' : false}
+            dragConstraints={{ top: 0, bottom: 100 }}
+            dragElastic={0.2}
+            onDragEnd={(_, info) => {
+              if (order?.status === 'DELIVERED' && info.offset.y > 100) {
+                onClose()
+              }
+            }}
+            className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 ${isExpanded ? 'max-h-[90vh]' : 'max-h-[60vh]'
+              } overflow-hidden flex flex-col`}
           >
             {/* Handle */}
-            <div 
+            <div
               className="flex justify-center pt-3 pb-2 cursor-pointer"
               onClick={() => setIsExpanded(!isExpanded)}
             >
-              <div className="w-12 h-1.5 bg-slate-300 rounded-full" />
+              <div className={`w-12 h-1.5 rounded-full ${order?.status === 'DELIVERED' ? 'bg-slate-400' : 'bg-slate-300'}`} />
             </div>
 
             {/* Header */}
@@ -329,7 +353,7 @@ export function OrderTrackingSheet({
                       <p className="text-sm text-orange-700 mb-2">
                         Quer pedir mais alguma coisa?
                       </p>
-                      <Button 
+                      <Button
                         className="w-full bg-orange-500 hover:bg-orange-600"
                         onClick={() => {
                           onClose()
@@ -377,11 +401,12 @@ interface OrderTrackingButtonProps {
   orderNumber?: string
   status?: string
   onClick: () => void
+  onDismiss?: () => void
 }
 
-export function OrderTrackingButton({ orderId, orderNumber, status, onClick }: OrderTrackingButtonProps) {
+export function OrderTrackingButton({ orderId, orderNumber, status, onClick, onDismiss }: OrderTrackingButtonProps) {
   if (!orderId) return null
-  
+
   const statusConfig = status ? (STATUS_CONFIG[status as OrderStatus] || STATUS_CONFIG.PENDING) : STATUS_CONFIG.PENDING
   const StatusIcon = statusConfig.icon
 
@@ -389,10 +414,20 @@ export function OrderTrackingButton({ orderId, orderNumber, status, onClick }: O
     <motion.button
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 100, opacity: 0 }}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
+      drag={status === 'DELIVERED' ? 'y' : false}
+      dragConstraints={{ top: 0, bottom: 100 }}
+      dragElastic={0.2}
+      onDragEnd={(_, info) => {
+        if (status === 'DELIVERED' && info.offset.y > 50) {
+          onDismiss?.()
+        }
+      }}
       onClick={onClick}
-      className="fixed bottom-20 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-white border border-slate-200 shadow-lg rounded-2xl p-3 flex items-center gap-3 z-30"
+      className={`fixed bottom-20 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-white border border-slate-200 shadow-lg rounded-2xl p-3 flex items-center gap-3 z-30 ${status === 'DELIVERED' ? 'cursor-grab active:cursor-grabbing' : ''
+        }`}
     >
       <div className={`p-2 rounded-full ${statusConfig.color}`}>
         <StatusIcon className="h-5 w-5" />

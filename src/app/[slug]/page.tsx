@@ -10,6 +10,7 @@ import { parseOpeningHours, type WeeklyHours } from '@/lib/utils/business-hours'
 import { PWAHeader } from '@/components/layout/pwa-header'
 import { IntegratedCheckout } from '@/components/checkout/integrated-checkout'
 import { ProductOptionsModal } from '@/components/checkout/product-options-modal'
+import { UserProfile } from '@/components/profile/unified-user-profile'
 import { useCart } from '@/contexts/cart-context'
 import { useOrderTracking } from '@/contexts/order-tracking-context'
 import { getProductWithOptions } from '@/actions/products/products'
@@ -20,9 +21,9 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import Image from 'next/image'
-import { 
+import {
   MapPin,
-  Clock, 
+  Clock,
   Star,
   Bike,
   Store,
@@ -118,19 +119,34 @@ function BusinessPageContent() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isOptionsModalOpen, setIsOptionsModalOpen] = useState(false)
 
+  // Estado para o sheet de perfil do usuário
+  const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
+
   const tableFromQuery = searchParams.get('table') || undefined
+
+  // Listener para o evento openProfileSheet (disparado pelo menu "Minha Conta")
+  useEffect(() => {
+    const handleOpenProfileSheet = () => {
+      setIsProfileSheetOpen(true)
+    }
+
+    window.addEventListener('openProfileSheet', handleOpenProfileSheet)
+    return () => {
+      window.removeEventListener('openProfileSheet', handleOpenProfileSheet)
+    }
+  }, [])
 
   useEffect(() => {
     if (tableFromQuery) {
       setOrderType('DINE_IN')
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableFromQuery])
 
   // Função para formatar horários de funcionamento
   const formatOpeningHours = (openingHours?: string | null): string => {
     if (!openingHours) return 'Horários não definidos'
-    
+
     try {
       // Tentar parsear como JSON (formato completo)
       const hours = parseOpeningHours(openingHours)
@@ -138,11 +154,11 @@ function BusinessPageContent() {
       const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
       const todayKey = dayKeys[today] as keyof WeeklyHours
       const todaySchedule = hours[todayKey]
-      
+
       if (todaySchedule.closed) {
         return 'Fechado hoje'
       }
-      
+
       return `${todaySchedule.open} - ${todaySchedule.close}`
     } catch {
       // Se não conseguir parsear como JSON, retornar como string simples
@@ -170,7 +186,7 @@ function BusinessPageContent() {
     const validateBusiness = async () => {
       try {
         const slug = params.slug as string
-        
+
         // Buscar dados do negócio da API
         const businessResponse = await fetch(`/api/business/${slug}`)
 
@@ -184,25 +200,25 @@ function BusinessPageContent() {
 
         // Buscar produtos do negócio
         const productsResponse = await fetch(`/api/business/${slug}/products`)
-        
+
         if (productsResponse.ok) {
           const productsData = await productsResponse.json()
           console.log('Dados recebidos da API:', {
             categoriesHierarchy: productsData.categoriesHierarchy,
             categories: productsData.categories
           })
-          
+
           setProducts(productsData.products)
           setProductsByCategory(productsData.productsByCategory)
           setCategories(productsData.categories)
           setCategoriesHierarchy(productsData.categoriesHierarchy || [])
-          
+
           // Definir primeira categoria como selecionada
           if (productsData.categories.length > 0) {
             setSelectedCategory(productsData.categories[0])
           }
         }
-        
+
       } catch {
         router.push('/')
       } finally {
@@ -217,11 +233,11 @@ function BusinessPageContent() {
   useEffect(() => {
     const checkActiveOrder = async () => {
       if (!tableFromQuery || !business?.slug) return
-      
+
       try {
         const { getActiveOrderForTable } = await import('@/actions/orders/public-orders')
         const result = await getActiveOrderForTable(business.slug, undefined, tableFromQuery)
-        
+
         if (result.success && result.data?.exists && result.data.order) {
           // TODO: Set active order in context if needed
           console.log('Active order found:', result.data.order)
@@ -230,7 +246,7 @@ function BusinessPageContent() {
         console.error('Erro ao verificar pedido ativo:', err)
       }
     }
-    
+
     checkActiveOrder()
   }, [tableFromQuery, business?.slug])
 
@@ -241,7 +257,7 @@ function BusinessPageContent() {
     if (businessStatus && !businessStatus.canAcceptOrders) {
       return
     }
-    
+
     addItem({
       id: product.id,
       productId: product.id,
@@ -260,7 +276,7 @@ function BusinessPageContent() {
     if (businessStatus && !businessStatus.canAcceptOrders) {
       return
     }
-    
+
     try {
       // Buscar opções do produto
       const result = await getProductWithOptions(product.id)
@@ -280,9 +296,9 @@ function BusinessPageContent() {
   }
 
   const handleAddToCartWithOptions = (
-    product: Product, 
-    selectedOptions: { [optionGroupId: string]: string[] }, 
-    quantity: number, 
+    product: Product,
+    selectedOptions: { [optionGroupId: string]: string[] },
+    quantity: number,
     totalPrice: number
   ) => {
     if (!business) return
@@ -294,7 +310,7 @@ function BusinessPageContent() {
 
     // Gerar texto descritivo das opções
     const optionsText = generateOptionsText(product, selectedOptions)
-    
+
     addItemWithOptions(
       product.id,
       product.name,
@@ -312,9 +328,9 @@ function BusinessPageContent() {
 
   const generateOptionsText = (product: Product, selectedOptions: { [optionGroupId: string]: string[] }): string => {
     if (!product.options) return ''
-    
+
     const texts: string[] = []
-    
+
     product.options.forEach(optionGroup => {
       const selectedItems = selectedOptions[optionGroup.id] || []
       if (selectedItems.length > 0) {
@@ -324,13 +340,13 @@ function BusinessPageContent() {
             return item ? item.name : ''
           })
           .filter(Boolean)
-        
+
         if (itemNames.length > 0) {
           texts.push(`${optionGroup.name}: ${itemNames.join(', ')}`)
         }
       }
     })
-    
+
     return texts.join(' | ')
   }
 
@@ -367,7 +383,7 @@ function BusinessPageContent() {
     return (
       <div className="min-h-screen bg-white">
         {/* PWA Header - Menu only, transparent initially, blur on scroll */}
-        <PWAHeader 
+        <PWAHeader
           menuOnly={true}
           scrollBlur={true}
           className="lg:hidden"
@@ -378,8 +394,8 @@ function BusinessPageContent() {
           {/* Banner Background - Full height from top */}
           <div className="h-48 sm:h-64 bg-gradient-to-r from-orange-500 to-orange-600">
             {business.banner ? (
-              <Image 
-                src={business.banner} 
+              <Image
+                src={business.banner}
                 alt="Banner da empresa"
                 width={800}
                 height={256}
@@ -415,7 +431,7 @@ function BusinessPageContent() {
                     </Button>
                   </CollapsibleTrigger>
                 </div>
-                
+
                 {/* Status Badge - Abaixo do nome */}
                 {statusLoading ? (
                   <Badge variant="secondary" className="text-xs animate-pulse">Verificando...</Badge>
@@ -426,7 +442,7 @@ function BusinessPageContent() {
                 ) : (
                   <Badge className="bg-red-100 text-red-800 text-xs">Fechado</Badge>
                 )}
-                
+
                 <CollapsibleContent className="mt-3 space-y-3">
                   {/* Description */}
                   {business.description && (
@@ -434,7 +450,7 @@ function BusinessPageContent() {
                       {business.description}
                     </p>
                   )}
-                  
+
                   <div className="grid grid-cols-2 gap-2 max-w-sm mx-auto">
                     {business.rating && (
                       <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2">
@@ -442,19 +458,19 @@ function BusinessPageContent() {
                         <span className="font-medium">{business.rating}</span>
                       </div>
                     )}
-                    
+
                     {business.deliveryTime && (
                       <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2">
                         <Clock className="h-3 w-3 flex-shrink-0" />
                         <span>{business.deliveryTime} min</span>
                       </div>
                     )}
-                    
+
                     <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2 col-span-2">
                       <Timer className="h-3 w-3 flex-shrink-0" />
                       <span className="truncate">{formatOpeningHours(business.openingHours)}</span>
                     </div>
-                    
+
                     {business.address && (
                       <div className="flex items-center justify-center gap-1 text-xs text-slate-600 bg-white/80 rounded-full py-1.5 px-2 col-span-2">
                         <MapPin className="h-3 w-3 flex-shrink-0" />
@@ -475,7 +491,7 @@ function BusinessPageContent() {
               Como você gostaria de receber seu pedido?
             </h2>
           </div>
-          
+
           <div className="space-y-3 max-w-md mx-auto mb-24">
             {business.acceptsDelivery && (
               <motion.div
@@ -486,7 +502,7 @@ function BusinessPageContent() {
                 transition={{ duration: 0.2 }}
                 className="w-full"
               >
-                <Card 
+                <Card
                   className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-orange-200 active:border-orange-300"
                   onClick={() => handleOrderTypeSelect('DELIVERY')}
                 >
@@ -511,7 +527,7 @@ function BusinessPageContent() {
                 whileTap={{ scale: 0.98 }}
                 className="w-full"
               >
-                <Card 
+                <Card
                   className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-blue-200 active:border-blue-300"
                   onClick={() => handleOrderTypeSelect('PICKUP')}
                 >
@@ -536,7 +552,7 @@ function BusinessPageContent() {
                 whileTap={{ scale: 0.98 }}
                 className="w-full"
               >
-                <Card 
+                <Card
                   className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-green-200 active:border-green-300"
                   onClick={() => handleOrderTypeSelect('DINE_IN')}
                 >
@@ -557,13 +573,14 @@ function BusinessPageContent() {
         {/* PWA Service Worker Registration */}
         <PWAServiceWorker />
 
-        <IntegratedCheckout 
-          businessSlug={params.slug as string} 
+        <IntegratedCheckout
+          businessSlug={params.slug as string}
           businessStatus={businessStatus}
           presetOrderType={orderType || undefined}
           lockOrderType={!!orderType}
           presetTableNumber={tableFromQuery}
           lockTableNumber={!!tableFromQuery}
+          deliveryFee={business.deliveryFee}
         />
       </div>
     )
@@ -572,7 +589,7 @@ function BusinessPageContent() {
   return (
     <div className="min-h-screen bg-white">
       {/* PWA Header - Normal with back button and white background */}
-      <PWAHeader 
+      <PWAHeader
         title={business.name}
         showBackButton={true}
         noBorder
@@ -638,7 +655,7 @@ function BusinessPageContent() {
                   )}
                 </div>
               </div>
-              
+
               {/* Desktop: Vertical categories */}
               <Card className="hidden lg:block">
                 <CardHeader className="pb-3">
@@ -651,53 +668,53 @@ function BusinessPageContent() {
                     </div>
                   ) : (
                     <div className="space-y-1">
-                    <Button
-                      key="all"
-                      onClick={() => setSelectedCategory('')}
-                      variant={selectedCategory === '' ? 'default' : 'ghost'}
-                      className="w-full justify-start text-sm"
-                    >
-                      Todos os itens
-                    </Button>
-                    {categoriesHierarchy.length > 0 ? (
-                      categoriesHierarchy.map((mainCategory) => (
-                        <div key={mainCategory.id} className="space-y-1">
+                      <Button
+                        key="all"
+                        onClick={() => setSelectedCategory('')}
+                        variant={selectedCategory === '' ? 'default' : 'ghost'}
+                        className="w-full justify-start text-sm"
+                      >
+                        Todos os itens
+                      </Button>
+                      {categoriesHierarchy.length > 0 ? (
+                        categoriesHierarchy.map((mainCategory) => (
+                          <div key={mainCategory.id} className="space-y-1">
+                            <Button
+                              onClick={() => setSelectedCategory(mainCategory.name)}
+                              variant={selectedCategory === mainCategory.name ? 'default' : 'ghost'}
+                              className="w-full justify-start text-sm"
+                            >
+                              {mainCategory.name}
+                            </Button>
+                            {mainCategory.subcategories && mainCategory.subcategories.length > 0 && (
+                              <div className="ml-4 space-y-1">
+                                {mainCategory.subcategories.map((subcategory) => (
+                                  <Button
+                                    key={subcategory.id}
+                                    onClick={() => setSelectedCategory(subcategory.name)}
+                                    variant={selectedCategory === subcategory.name ? 'default' : 'ghost'}
+                                    className="w-full justify-start text-sm"
+                                  >
+                                    {subcategory.name}
+                                  </Button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        // Fallback para categorias simples
+                        _categories.map((category) => (
                           <Button
-                            onClick={() => setSelectedCategory(mainCategory.name)}
-                            variant={selectedCategory === mainCategory.name ? 'default' : 'ghost'}
+                            key={category}
+                            onClick={() => setSelectedCategory(category)}
+                            variant={selectedCategory === category ? 'default' : 'ghost'}
                             className="w-full justify-start text-sm"
                           >
-                            {mainCategory.name}
+                            {category}
                           </Button>
-                          {mainCategory.subcategories && mainCategory.subcategories.length > 0 && (
-                            <div className="ml-4 space-y-1">
-                              {mainCategory.subcategories.map((subcategory) => (
-                                <Button
-                                  key={subcategory.id}
-                                  onClick={() => setSelectedCategory(subcategory.name)}
-                                  variant={selectedCategory === subcategory.name ? 'default' : 'ghost'}
-                                  className="w-full justify-start text-sm"
-                                >
-                                  {subcategory.name}
-                                </Button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      // Fallback para categorias simples
-                      _categories.map((category) => (
-                        <Button
-                          key={category}
-                          onClick={() => setSelectedCategory(category)}
-                          variant={selectedCategory === category ? 'default' : 'ghost'}
-                          className="w-full justify-start text-sm"
-                        >
-                          {category}
-                        </Button>
-                      ))
-                    )}
+                        ))
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -723,7 +740,7 @@ function BusinessPageContent() {
                 )}
               </div>
             )}
-            
+
             <div className="space-y-4">
               {selectedCategory && (
                 <div className="hidden lg:block">
@@ -732,8 +749,8 @@ function BusinessPageContent() {
                   </h2>
                 </div>
               )}
-                
-                <div className="space-y-4">
+
+              <div className="space-y-4">
                 {(productsByCategory[selectedCategory] || []).map((product, index) => (
                   <motion.div
                     key={product.id}
@@ -746,8 +763,8 @@ function BusinessPageContent() {
                       {/* Imagem do produto à esquerda */}
                       <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
                         {product.image ? (
-                          <Image 
-                            src={product.image} 
+                          <Image
+                            src={product.image}
                             alt={product.name}
                             width={80}
                             height={80}
@@ -775,7 +792,7 @@ function BusinessPageContent() {
                         <p className="text-lg font-bold text-orange-600">
                           R$ {product.price.toFixed(2)}
                         </p>
-                        
+
                         {getCartItemQuantity(product.id) > 0 ? (
                           <div className="flex items-center gap-2">
                             <Button
@@ -819,13 +836,13 @@ function BusinessPageContent() {
           </div>
         </div>
       </div>
-      
+
       {/* PWA Service Worker Registration */}
       <PWAServiceWorker />
-      
+
       {/* Floating Checkout Cart */}
-      <IntegratedCheckout 
-        businessSlug={params.slug as string} 
+      <IntegratedCheckout
+        businessSlug={params.slug as string}
         businessStatus={businessStatus}
         presetOrderType={orderType || undefined}
         lockOrderType={!!orderType}
@@ -833,8 +850,9 @@ function BusinessPageContent() {
         lockTableNumber={!!tableFromQuery}
         existingOrderId={activeOrderId || undefined}
         onOrderCreated={setOrderCreated}
+        deliveryFee={business.deliveryFee}
       />
-      
+
       {/* Product Options Modal */}
       <ProductOptionsModal
         product={selectedProduct}
@@ -844,6 +862,14 @@ function BusinessPageContent() {
           setSelectedProduct(null)
         }}
         onAddToCart={handleAddToCartWithOptions}
+      />
+
+      {/* Profile Sheet - triggered by "Minha Conta" in sidebar */}
+      <UserProfile
+        open={isProfileSheetOpen}
+        onOpenChange={setIsProfileSheetOpen}
+        mode="sheet"
+        readOnly={true}
       />
     </div>
   )

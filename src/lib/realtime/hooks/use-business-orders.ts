@@ -2,10 +2,10 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRealtimeChannel } from './use-realtime-channel'
-import { 
-  getBusinessOrdersChannel, 
-  type RealtimeMessage, 
-  type OrderRealtimePayload 
+import {
+  getBusinessOrdersChannel,
+  type RealtimeMessage,
+  type OrderRealtimePayload
 } from '../types'
 import { supabase } from '@/lib/supabase'
 
@@ -25,7 +25,8 @@ interface BusinessOrder {
     name: string
     quantity: number
     price: number
-  }>
+  }> | undefined
+  address?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -120,30 +121,41 @@ export function useBusinessOrdersRealtime({
 
       // Verificar se é da tabela orders e do business correto
       if (dbPayload.table !== 'orders') return
-      
+
       const newData = dbPayload.new
       const oldData = dbPayload.old
 
+      // Logar as chaves recebidas para debug
+      console.log('[useBusinessOrdersRealtime] Chaves no payload:', Object.keys(newData || {}))
+
+      // Extrair businessId de forma robusta (suportando camelCase, snake_case e lowercase)
+      const messageBusinessId = (newData?.businessId || newData?.business_id || newData?.businessid ||
+        oldData?.businessId || oldData?.business_id || oldData?.businessid) as string | undefined
+
       // Verificar businessId
-      if (newData?.businessId !== businessId && oldData?.businessId !== businessId) return
+      if (messageBusinessId !== businessId) {
+        console.log('[useBusinessOrdersRealtime] Ignorando evento de outro business:', messageBusinessId, 'Esperado:', businessId)
+        return
+      }
 
       // Supabase retorna snake_case do banco
-      const tableId = (newData?.tableId || newData?.table_id || oldData?.tableId || oldData?.table_id) as string | undefined
+      const tableId = (newData?.tableId || newData?.table_id || newData?.tableid || oldData?.tableId || oldData?.table_id || oldData?.tableid) as string | undefined
       const order: BusinessOrder = {
         id: (newData?.id || oldData?.id) as string,
-        orderNumber: (newData?.orderNumber || newData?.order_number || oldData?.orderNumber || oldData?.order_number) as string,
+        orderNumber: (newData?.orderNumber || newData?.order_number || newData?.ordernumber || oldData?.orderNumber || oldData?.order_number || oldData?.ordernumber) as string,
         status: (newData?.status || oldData?.status) as string,
         type: (newData?.type || oldData?.type) as string,
         tableId,
         tableNumber: tableId ? tableCacheRef.current[tableId] || null : null,
-        customerName: (newData?.customerName || newData?.customer_name || oldData?.customerName || oldData?.customer_name) as string,
-        customerPhone: (newData?.customerPhone || newData?.customer_phone || oldData?.customerPhone || oldData?.customer_phone) as string,
+        address: (newData?.deliveryAddress || newData?.delivery_address || newData?.deliveryaddress || oldData?.deliveryAddress || oldData?.delivery_address || oldData?.deliveryaddress) as string | null,
+        customerName: (newData?.customerName || newData?.customer_name || newData?.customername || oldData?.customerName || oldData?.customer_name || oldData?.customername) as string,
+        customerPhone: (newData?.customerPhone || newData?.customer_phone || newData?.customerphone || oldData?.customerPhone || oldData?.customer_phone || oldData?.customerphone) as string,
         total: (newData?.total || oldData?.total) as number,
-        items: [], // Items precisam ser buscados separadamente
-        createdAt: (newData?.createdAt || newData?.created_at || oldData?.createdAt || oldData?.created_at) as string,
-        updatedAt: (newData?.updatedAt || newData?.updated_at || oldData?.updatedAt || oldData?.updated_at) as string
+        items: undefined as any, // Don't default to empty array, let it be undefined to preserve existing items
+        createdAt: (newData?.createdAt || newData?.created_at || newData?.createdat || oldData?.createdAt || oldData?.created_at || oldData?.createdat) as string,
+        updatedAt: (newData?.updatedAt || newData?.updated_at || newData?.updatedat || oldData?.updatedAt || oldData?.updated_at || oldData?.updatedat) as string
       }
-      console.log('[useBusinessOrdersRealtime] Order tableId:', tableId, 'tableNumber:', order.tableNumber, 'cache:', tableCacheRef.current)
+      // console.log('[useBusinessOrdersRealtime] Order tableId:', tableId, 'tableNumber:', order.tableNumber)
 
       if (message.type === 'database_insert') {
         console.log('[useBusinessOrdersRealtime] Novo pedido via postgres_changes:', order.orderNumber)
@@ -195,8 +207,8 @@ export function useBusinessOrdersRealtime({
       orderNumber: payload.orderNumber,
       status: payload.status,
       type: payload.type,
-        tableId: (payload as { tableId?: string }).tableId,
-        tableNumber: (payload as { tableNumber?: string }).tableNumber,
+      tableId: (payload as { tableId?: string }).tableId,
+      tableNumber: (payload as { tableNumber?: string }).tableNumber,
       customerName: payload.customerName,
       customerPhone: payload.customerPhone,
       total: payload.total,
@@ -207,34 +219,34 @@ export function useBusinessOrdersRealtime({
 
     const handleHydrated = (hydrated: BusinessOrder) => {
       switch (message.type) {
-      case 'business_order_created':
-        setOrders(prev => {
-          const exists = prev.find(o => o.id === order.id)
-          if (!exists) {
-            setNewOrderCount(count => count + 1)
-            callbacksRef.current.onOrderCreated?.(hydrated)
-            return [hydrated, ...prev]
-          }
-          return prev
-        })
-        break
+        case 'business_order_created':
+          setOrders(prev => {
+            const exists = prev.find(o => o.id === order.id)
+            if (!exists) {
+              setNewOrderCount(count => count + 1)
+              callbacksRef.current.onOrderCreated?.(hydrated)
+              return [hydrated, ...prev]
+            }
+            return prev
+          })
+          break
 
-      case 'business_order_updated':
-        setOrders(prev => prev.map(o => o.id === order.id ? hydrated : o))
-        callbacksRef.current.onOrderUpdated?.(hydrated)
-        break
+        case 'business_order_updated':
+          setOrders(prev => prev.map(o => o.id === order.id ? hydrated : o))
+          callbacksRef.current.onOrderUpdated?.(hydrated)
+          break
 
-      case 'business_order_status_changed':
-        setOrders(prev => prev.map(o => {
-          if (o.id === order.id) {
-            const oldStatus = o.status
-            callbacksRef.current.onOrderStatusChanged?.(hydrated, oldStatus)
-            return hydrated
-          }
-          return o
-        }))
-        break
-    }
+        case 'business_order_status_changed':
+          setOrders(prev => prev.map(o => {
+            if (o.id === order.id) {
+              const oldStatus = o.status
+              callbacksRef.current.onOrderStatusChanged?.(hydrated, oldStatus)
+              return hydrated
+            }
+            return o
+          }))
+          break
+      }
     }
 
     hydrateTableNumber(order).then(handleHydrated)
@@ -244,10 +256,10 @@ export function useBusinessOrdersRealtime({
   const { isConnected, error, sendMessage } = useRealtimeChannel(
     channelName,
     handleMessage,
-    { 
+    {
       enabled: enabled && !!businessId,
-      private: false // Usar canal público para receber broadcasts do banco
-      // Removido table: 'orders' pois estamos usando broadcast via trigger
+      private: false, // Usar canal público para receber broadcasts do banco
+      table: 'orders' // Habilitar trigger do banco de dados
     }
   )
 

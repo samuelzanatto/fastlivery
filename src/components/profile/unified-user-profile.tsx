@@ -3,18 +3,18 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession, signOut } from '@/lib/auth/auth-client'
-import { 
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { 
-  Sheet, 
-  SheetContent, 
-  SheetTrigger, 
-  SheetTitle, 
-  SheetHeader 
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetHeader
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,8 +25,8 @@ import { Separator } from '@/components/ui/separator'
 import { ImageUploadDialog } from '@/components/ui/image-upload-dialog'
 import { ImageType } from '@/lib/services/image-types'
 import { useIsMobile } from '@/hooks/ui/use-mobile'
-import { 
-  User, 
+import {
+  User,
   Camera,
   Eye,
   EyeOff,
@@ -37,6 +37,7 @@ import {
 import { notify } from '@/lib/notifications/notify'
 import { updateUserProfile } from '@/actions/users/profile'
 import { useBusinessLayout } from '@/providers/business-layout-provider'
+import { OrdersSheet } from '@/components/orders/orders-sheet'
 
 interface UserProfileProps {
   children?: React.ReactNode
@@ -48,9 +49,9 @@ interface UserProfileProps {
   readOnly?: boolean
 }
 
-export function UserProfile({ 
-  children, 
-  open = false, 
+export function UserProfile({
+  children,
+  open = false,
   onOpenChange,
   mode = 'auto',
   readOnly = false
@@ -62,6 +63,7 @@ export function UserProfile({
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false)
   const isMobile = useIsMobile()
 
   // Determinar o modo de exibição
@@ -161,7 +163,7 @@ export function UserProfile({
             {session?.user?.name?.slice(0, 2).toUpperCase() || 'U'}
           </AvatarFallback>
         </Avatar>
-        
+
         <div>
           <h3 className="font-semibold text-lg">{session?.user?.name || 'Usuário'}</h3>
           <p className="text-sm text-gray-600">{session?.user?.email}</p>
@@ -178,26 +180,26 @@ export function UserProfile({
 
       {/* Menu Items */}
       <div className="space-y-2">
-        <Button 
-          variant="ghost" 
-          className="w-full justify-start" 
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
           onClick={() => router.push('/enderecos')}
         >
           <MapPin className="w-4 h-4 mr-3" />
           Meus Endereços
         </Button>
-        
-        <Button 
-          variant="ghost" 
-          className="w-full justify-start" 
-          onClick={() => router.push('/pedidos')}
+
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => setIsOrdersOpen(true)}
         >
           <CreditCard className="w-4 h-4 mr-3" />
           Meus Pedidos
         </Button>
-        
-        <Button 
-          variant="ghost" 
+
+        <Button
+          variant="ghost"
           className="w-full justify-start"
           onClick={() => {
             handleOpenChange(false)
@@ -216,14 +218,16 @@ export function UserProfile({
       <Separator />
 
       {/* Logout */}
-      <Button 
-        variant="outline" 
-        className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50" 
+      <Button
+        variant="outline"
+        className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50"
         onClick={handleSignOut}
       >
         <LogOut className="w-4 h-4 mr-3" />
         Sair da Conta
       </Button>
+
+      <OrdersSheet isOpen={isOrdersOpen} onClose={() => setIsOrdersOpen(false)} />
     </div>
   )
 
@@ -262,7 +266,7 @@ export function UserProfile({
             </ImageUploadDialog>
           )}
         </div>
-        
+
         {!isEditing ? (
           <div>
             <h2 className="text-xl font-semibold">{session?.user?.name || 'Usuário'}</h2>
@@ -358,15 +362,15 @@ export function UserProfile({
       <div className="flex gap-3 pt-4">
         {!isEditing ? (
           <>
-            <Button 
+            <Button
               onClick={() => setIsEditing(true)}
               className="flex-1"
             >
               <User className="w-4 h-4 mr-2" />
               Editar Perfil
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handleSignOut}
               className="text-red-600 border-red-200 hover:bg-red-50"
             >
@@ -376,14 +380,14 @@ export function UserProfile({
           </>
         ) : (
           <>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setIsEditing(false)}
               className="flex-1"
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleSaveProfile}
               disabled={isLoading}
               className="flex-1"

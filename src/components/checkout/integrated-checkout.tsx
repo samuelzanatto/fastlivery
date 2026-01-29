@@ -12,12 +12,14 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useCart, CartItem } from '@/contexts/cart-context'
 import { createPublicOrder, addItemsToOrder, getActiveOrderForTable } from '@/actions/orders/public-orders'
 import { useClientSession } from '@/hooks/use-client-session'
-import { 
-  ShoppingBag, 
-  Trash2, 
-  Plus, 
-  Minus, 
-  MapPin, 
+import { useSession } from '@/lib/auth/auth-client'
+import { getMyAddresses, Address } from '@/actions/customers/customers'
+import {
+  ShoppingBag,
+  Trash2,
+  Plus,
+  Minus,
+  MapPin,
   CreditCard,
   Banknote,
   X,
@@ -41,6 +43,7 @@ interface IntegratedCheckoutProps {
   lockTableNumber?: boolean
   existingOrderId?: string // Se já existe um pedido ativo para esta mesa
   onOrderCreated?: (orderId: string, orderNumber: string) => void // Callback quando pedido é criado
+  deliveryFee?: number // Taxa de entrega configurada pelo business
 }
 
 type OrderType = 'DELIVERY' | 'PICKUP' | 'DINE_IN'
@@ -55,30 +58,32 @@ export function IntegratedCheckout({
   presetTableNumber,
   lockTableNumber,
   existingOrderId: initialExistingOrderId,
-  onOrderCreated
+  onOrderCreated,
+  deliveryFee: businessDeliveryFee
 }: IntegratedCheckoutProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { items, updateQuantity, removeItem, clearCart, getTotalPrice, getTotalItems } = useCart()
   const { registerSession } = useClientSession()
+  const { data: session } = useSession()
   const [isExpanded, setIsExpanded] = useState(false)
   const [step, setStep] = useState<CheckoutStep>('cart')
   const [orderType, setOrderType] = useState<OrderType>('DELIVERY')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  
+
   // Estado para pedido existente (dine-in)
   const [existingOrderId, setExistingOrderId] = useState<string | null>(initialExistingOrderId || searchParams.get('order') || null)
   const [existingOrderNumber, setExistingOrderNumber] = useState<string | null>(null)
   const [isCheckingExistingOrder, setIsCheckingExistingOrder] = useState(false)
   const [tableNumber, setTableNumber] = useState('')
-  
+
   // Customer info
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
   const [notes, setNotes] = useState('')
-  
+
   // Delivery address
   const [street, setStreet] = useState('')
   const [number, setNumber] = useState('')
@@ -86,8 +91,59 @@ export function IntegratedCheckout({
   const [neighborhood, setNeighborhood] = useState('')
   const [city, setCity] = useState('')
 
+  // Saved addresses for logged-in users
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([])
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
+  const [hasAutoFilled, setHasAutoFilled] = useState(false)
+
+  // Auto-fill user data when logged in
+  useEffect(() => {
+    if (session?.user && !hasAutoFilled) {
+      // Fill name and email from session
+      if (session.user.name && !customerName) {
+        setCustomerName(session.user.name)
+      }
+      if (session.user.email && !customerEmail) {
+        setCustomerEmail(session.user.email)
+      }
+
+      // Fetch saved addresses
+      getMyAddresses().then((result) => {
+        if (result.success && result.data && result.data.length > 0) {
+          setSavedAddresses(result.data)
+
+          // Auto-select default address
+          const defaultAddress = result.data.find(addr => addr.isDefault) || result.data[0]
+          if (defaultAddress && !street) {
+            setSelectedAddressId(defaultAddress.id)
+            setStreet(defaultAddress.street)
+            setNumber(defaultAddress.number)
+            setComplement(defaultAddress.complement || '')
+            setNeighborhood(defaultAddress.neighborhood)
+            setCity(defaultAddress.city)
+          }
+        }
+      })
+
+      setHasAutoFilled(true)
+    }
+  }, [session, hasAutoFilled, customerName, customerEmail, street])
+
+  // Handle address selection change
+  const handleAddressSelect = (addressId: string) => {
+    const address = savedAddresses.find(a => a.id === addressId)
+    if (address) {
+      setSelectedAddressId(addressId)
+      setStreet(address.street)
+      setNumber(address.number)
+      setComplement(address.complement || '')
+      setNeighborhood(address.neighborhood)
+      setCity(address.city)
+    }
+  }
+
   const subtotal = getTotalPrice()
-  const deliveryFee = orderType === 'DELIVERY' ? 5 : 0 // TODO: buscar do business
+  const deliveryFee = orderType === 'DELIVERY' ? (businessDeliveryFee ?? 0) : 0
   const total = subtotal + deliveryFee
   const itemCount = getTotalItems()
 
@@ -187,7 +243,7 @@ export function IntegratedCheckout({
 
 
     try {
-      const deliveryAddress = orderType === 'DELIVERY' 
+      const deliveryAddress = orderType === 'DELIVERY'
         ? `${street}, ${number}${complement ? ` - ${complement}` : ''}, ${neighborhood}, ${city}`
         : undefined
 
@@ -226,12 +282,12 @@ export function IntegratedCheckout({
         setNeighborhood('')
         setCity('')
         setTableNumber('')
-        
+
         // Registrar sessão e notificar criação do pedido
         if (result.data.id && result.data.orderNumber) {
           // Registrar no banco de dados
           await registerSession(result.data.id, businessSlug, tableNumber || presetTableNumber)
-          
+
           // Chamar callback
           onOrderCreated?.(result.data.id, result.data.orderNumber)
         }
@@ -311,17 +367,17 @@ export function IntegratedCheckout({
               <span className="text-sm text-slate-500">({itemCount} itens)</span>
             </div>
             <div className="flex items-center gap-1">
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8"
                 onClick={() => setIsExpanded(false)}
               >
                 <ChevronDown className="h-5 w-5" />
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8"
                 onClick={() => {
                   setIsExpanded(false)
@@ -332,287 +388,318 @@ export function IntegratedCheckout({
               </Button>
             </div>
           </CardHeader>
-          
+
           <CardContent className="px-3 py-2 overflow-y-auto max-h-[calc(85vh-130px)] flex flex-col">
             <AnimatePresence mode="wait">
               {/* Step: Cart */}
               {step === 'cart' && (
-                <motion.div 
+                <motion.div
                   key="step-cart"
                   initial={{ x: 300, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: -300, opacity: 0 }}
                   transition={{ duration: 0.3 }}
                   className="space-y-3 flex-1">
-                {items.map((item, index) => (
-                  <CartItemCard 
-                    key={`${item.id}-${index}`}
-                    item={item} 
-                    onUpdateQuantity={updateQuantity}
-                    onRemove={removeItem}
-                  />
-                ))}
+                  {items.map((item, index) => (
+                    <CartItemCard
+                      key={`${item.id}-${index}`}
+                      item={item}
+                      onUpdateQuantity={updateQuantity}
+                      onRemove={removeItem}
+                    />
+                  ))}
 
-                <div className="border-t pt-3 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Subtotal</span>
-                    <span>R$ {subtotal.toFixed(2)}</span>
-                  </div>
-                  {orderType === 'DELIVERY' && (
-                    <div className="flex justify-between text-sm text-slate-600">
-                      <span>Taxa de entrega</span>
-                      <span>R$ {deliveryFee.toFixed(2)}</span>
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Subtotal</span>
+                      <span>R$ {subtotal.toFixed(2)}</span>
                     </div>
-                  )}
-                  <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                    <span>Total</span>
-                    <span>R$ {total.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {/* Se já existe pedido para esta mesa, mostrar opção de adicionar itens */}
-                {existingOrderId && orderType === 'DINE_IN' ? (
-                  <div className="space-y-3">
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2 text-amber-800 mb-2">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="font-medium text-sm">Mesa com pedido em andamento</span>
+                    {orderType === 'DELIVERY' && (
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>Taxa de entrega</span>
+                        <span>R$ {deliveryFee.toFixed(2)}</span>
                       </div>
-                      <p className="text-xs text-amber-700">
-                        Pedido #{existingOrderNumber || existingOrderId.slice(0, 8)} já está aberto para esta mesa.
-                      </p>
+                    )}
+                    <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                      <span>Total</span>
+                      <span>R$ {total.toFixed(2)}</span>
                     </div>
-                    <Button 
-                      className="w-full bg-orange-500 hover:bg-orange-600" 
-                      disabled={isSubmitting || isCheckingExistingOrder}
-                      onClick={handleAddItemsToExisting}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      {isSubmitting ? 'Adicionando...' : 'Adicionar ao Pedido Existente'}
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="w-full text-sm"
-                      onClick={() => router.push(`/${businessSlug}/pedido/${existingOrderId}`)}
-                    >
-                      Ver Pedido Atual
-                    </Button>
                   </div>
-                ) : (
-                  <Button 
-                    className="w-full" 
-                    disabled={!canAcceptOrders || isCheckingExistingOrder}
-                    onClick={() => setStep('details')}
-                  >
-                    {isCheckingExistingOrder ? 'Verificando...' : canAcceptOrders ? 'Continuar' : 'Estabelecimento fechado'}
-                  </Button>
-                )}
-              </motion.div>
-            )}
 
-            {/* Step: Details */}
-            {step === 'details' && (
-              <motion.div 
-                key="step-details"
-                initial={{ x: 300, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -300, opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-6 flex-1">
-                <div>
-                  <Label htmlFor="name" className="mb-1 block">Nome *</Label>
-                  <Input
-                    id="name"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Seu nome"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="phone" className="mb-1 block">Telefone *</Label>
-                  <Input
-                    id="phone"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="(11) 99999-9999"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="email" className="mb-1 block">Email (opcional)</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    placeholder="seu@email.com"
-                  />
-                </div>
-
-                <div>
-                  <Label className="mb-2 block">Tipo de Pedido</Label>
-                  {isOrderTypeLocked ? (
-                    <div className="p-3 border rounded-lg bg-slate-50 text-sm font-medium">
-                      {orderType === 'DELIVERY' && 'Entrega'}
-                      {orderType === 'PICKUP' && 'Retirada'}
-                      {orderType === 'DINE_IN' && 'Comer no local'}
+                  {/* Se já existe pedido para esta mesa, mostrar opção de adicionar itens */}
+                  {existingOrderId && orderType === 'DINE_IN' ? (
+                    <div className="space-y-3">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <div className="flex items-center gap-2 text-amber-800 mb-2">
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="font-medium text-sm">Mesa com pedido em andamento</span>
+                        </div>
+                        <p className="text-xs text-amber-700">
+                          Pedido #{existingOrderNumber || existingOrderId.slice(0, 8)} já está aberto para esta mesa.
+                        </p>
+                      </div>
+                      <Button
+                        className="w-full bg-orange-500 hover:bg-orange-600"
+                        disabled={isSubmitting || isCheckingExistingOrder}
+                        onClick={handleAddItemsToExisting}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        {isSubmitting ? 'Adicionando...' : 'Adicionar ao Pedido Existente'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full text-sm"
+                        onClick={() => router.push(`/${businessSlug}/pedido/${existingOrderId}`)}
+                      >
+                        Ver Pedido Atual
+                      </Button>
                     </div>
                   ) : (
-                    <RadioGroup 
-                      value={orderType} 
-                      onValueChange={(v) => setOrderType(v as OrderType)}
-                      className="mt-0"
+                    <Button
+                      className="w-full"
+                      disabled={!canAcceptOrders || isCheckingExistingOrder}
+                      onClick={() => setStep('details')}
                     >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="DELIVERY" id="delivery" />
-                        <Label htmlFor="delivery">Entrega</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="PICKUP" id="pickup" />
-                        <Label htmlFor="pickup">Retirada</Label>
-                      </div>
-                    </RadioGroup>
+                      {isCheckingExistingOrder ? 'Verificando...' : canAcceptOrders ? 'Continuar' : 'Estabelecimento fechado'}
+                    </Button>
                   )}
-                </div>
+                </motion.div>
+              )}
 
-                {orderType === 'DELIVERY' && (
-                  <div className="space-y-2 p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      <Label>Endereço de Entrega</Label>
-                    </div>
+              {/* Step: Details */}
+              {step === 'details' && (
+                <motion.div
+                  key="step-details"
+                  initial={{ x: 300, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -300, opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6 flex-1">
+                  <div>
+                    <Label htmlFor="name" className="mb-1 block">Nome *</Label>
                     <Input
-                      value={street}
-                      onChange={(e) => setStreet(e.target.value)}
-                      placeholder="Rua *"
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        value={number}
-                        onChange={(e) => setNumber(e.target.value)}
-                        placeholder="Número *"
-                      />
-                      <Input
-                        value={complement}
-                        onChange={(e) => setComplement(e.target.value)}
-                        placeholder="Complemento"
-                      />
-                    </div>
-                    <Input
-                      value={neighborhood}
-                      onChange={(e) => setNeighborhood(e.target.value)}
-                      placeholder="Bairro *"
-                    />
-                    <Input
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="Cidade *"
+                      id="name"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Seu nome"
                     />
                   </div>
-                )}
+                  <div>
+                    <Label htmlFor="phone" className="mb-1 block">Telefone *</Label>
+                    <Input
+                      id="phone"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="(11) 99999-9999"
+                    />
+                  </div>
 
-                {orderType === 'DINE_IN' && (
-                  <div className="space-y-2 p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      <Label>Número da mesa</Label>
-                    </div>
-                    {isTableNumberLocked ? (
-                      <div className="p-3 border rounded-lg bg-white text-sm font-medium">
-                        {tableNumber || 'Mesa não informada'}
+                  <div>
+                    <Label htmlFor="email" className="mb-1 block">Email (opcional)</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      placeholder="seu@email.com"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="mb-2 block">Tipo de Pedido</Label>
+                    {isOrderTypeLocked ? (
+                      <div className="p-3 border rounded-lg bg-slate-50 text-sm font-medium">
+                        {orderType === 'DELIVERY' && 'Entrega'}
+                        {orderType === 'PICKUP' && 'Retirada'}
+                        {orderType === 'DINE_IN' && 'Comer no local'}
                       </div>
                     ) : (
-                      <Input
-                        value={tableNumber}
-                        onChange={(e) => setTableNumber(e.target.value)}
-                        placeholder="Ex: 12"
-                      />
+                      <RadioGroup
+                        value={orderType}
+                        onValueChange={(v) => setOrderType(v as OrderType)}
+                        className="mt-0"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="DELIVERY" id="delivery" />
+                          <Label htmlFor="delivery">Entrega</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="PICKUP" id="pickup" />
+                          <Label htmlFor="pickup">Retirada</Label>
+                        </div>
+                      </RadioGroup>
                     )}
                   </div>
-                )}
 
-                <div>
-                  <Label htmlFor="notes" className="mb-1 block">Observações</Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Alguma observação para o pedido?"
-                    rows={2}
-                  />
-                </div>
-
-              </motion.div>
-            )}
-
-            {/* Step: Payment */}
-            {step === 'payment' && (
-              <motion.div 
-                key="step-payment"
-                initial={{ x: 300, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -300, opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-2 flex-1">
-                <div>
-                  <Label className="mb-2 block">Forma de Pagamento</Label>
-                  <RadioGroup 
-                    value={paymentMethod} 
-                    onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg">
-                      <RadioGroupItem value="PIX" id="pix" />
-                      <Label htmlFor="pix" className="flex items-center gap-2 cursor-pointer">
-                        <CreditCard className="h-4 w-4" />
-                        PIX
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg">
-                      <RadioGroupItem value="CREDIT" id="credit" />
-                      <Label htmlFor="credit" className="flex items-center gap-2 cursor-pointer">
-                        <CreditCard className="h-4 w-4" />
-                        Cartão de Crédito
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg">
-                      <RadioGroupItem value="DEBIT" id="debit" />
-                      <Label htmlFor="debit" className="flex items-center gap-2 cursor-pointer">
-                        <CreditCard className="h-4 w-4" />
-                        Cartão de Débito
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 p-3 border rounded-lg">
-                      <RadioGroupItem value="MONEY" id="money" />
-                      <Label htmlFor="money" className="flex items-center gap-2 cursor-pointer">
-                        <Banknote className="h-4 w-4" />
-                        Dinheiro
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-
-                <div className="border-t pt-3 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Subtotal</span>
-                    <span>R$ {subtotal.toFixed(2)}</span>
-                  </div>
                   {orderType === 'DELIVERY' && (
-                    <div className="flex justify-between text-sm text-slate-600">
-                      <span>Taxa de entrega</span>
-                      <span>R$ {deliveryFee.toFixed(2)}</span>
+                    <div className="space-y-2 p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        <Label>Endereço de Entrega</Label>
+                      </div>
+
+                      {/* Address selector for logged-in users with saved addresses */}
+                      {savedAddresses.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          <Label className="text-xs text-slate-600">Seus endereços salvos</Label>
+                          <select
+                            className="w-full p-2 border rounded-lg bg-white text-sm"
+                            value={selectedAddressId || ''}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAddressSelect(e.target.value)
+                              } else {
+                                setSelectedAddressId(null)
+                                setStreet('')
+                                setNumber('')
+                                setComplement('')
+                                setNeighborhood('')
+                                setCity('')
+                              }
+                            }}
+                          >
+                            <option value="">Digite um novo endereço</option>
+                            {savedAddresses.map((addr) => (
+                              <option key={addr.id} value={addr.id}>
+                                {addr.street}, {addr.number} - {addr.neighborhood}
+                                {addr.isDefault && ' (Padrão)'}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <Input
+                        value={street}
+                        onChange={(e) => setStreet(e.target.value)}
+                        placeholder="Rua *"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={number}
+                          onChange={(e) => setNumber(e.target.value)}
+                          placeholder="Número *"
+                        />
+                        <Input
+                          value={complement}
+                          onChange={(e) => setComplement(e.target.value)}
+                          placeholder="Complemento"
+                        />
+                      </div>
+                      <Input
+                        value={neighborhood}
+                        onChange={(e) => setNeighborhood(e.target.value)}
+                        placeholder="Bairro *"
+                      />
+                      <Input
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        placeholder="Cidade *"
+                      />
                     </div>
                   )}
-                  <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                    <span>Total</span>
-                    <span>R$ {total.toFixed(2)}</span>
+
+                  {orderType === 'DINE_IN' && (
+                    <div className="space-y-2 p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        <Label>Número da mesa</Label>
+                      </div>
+                      {isTableNumberLocked ? (
+                        <div className="p-3 border rounded-lg bg-white text-sm font-medium">
+                          {tableNumber || 'Mesa não informada'}
+                        </div>
+                      ) : (
+                        <Input
+                          value={tableNumber}
+                          onChange={(e) => setTableNumber(e.target.value)}
+                          placeholder="Ex: 12"
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <Label htmlFor="notes" className="mb-1 block">Observações</Label>
+                    <Textarea
+                      id="notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Alguma observação para o pedido?"
+                      rows={2}
+                    />
                   </div>
-                </div>
-              </motion.div>
+
+                </motion.div>
+              )}
+
+              {/* Step: Payment */}
+              {step === 'payment' && (
+                <motion.div
+                  key="step-payment"
+                  initial={{ x: 300, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -300, opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-2 flex-1">
+                  <div>
+                    <Label className="mb-2 block">Forma de Pagamento</Label>
+                    <RadioGroup
+                      value={paymentMethod}
+                      onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                        <RadioGroupItem value="PIX" id="pix" />
+                        <Label htmlFor="pix" className="flex items-center gap-2 cursor-pointer">
+                          <CreditCard className="h-4 w-4" />
+                          PIX
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                        <RadioGroupItem value="CREDIT" id="credit" />
+                        <Label htmlFor="credit" className="flex items-center gap-2 cursor-pointer">
+                          <CreditCard className="h-4 w-4" />
+                          Cartão de Crédito
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                        <RadioGroupItem value="DEBIT" id="debit" />
+                        <Label htmlFor="debit" className="flex items-center gap-2 cursor-pointer">
+                          <CreditCard className="h-4 w-4" />
+                          Cartão de Débito
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2 p-3 border rounded-lg">
+                        <RadioGroupItem value="MONEY" id="money" />
+                        <Label htmlFor="money" className="flex items-center gap-2 cursor-pointer">
+                          <Banknote className="h-4 w-4" />
+                          Dinheiro
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Subtotal</span>
+                      <span>R$ {subtotal.toFixed(2)}</span>
+                    </div>
+                    {orderType === 'DELIVERY' && (
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>Taxa de entrega</span>
+                        <span>R$ {deliveryFee.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                      <span>Total</span>
+                      <span>R$ {total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </motion.div>
               )}
             </AnimatePresence>
           </CardContent>
-          
+
           {/* Footer com botões fixos */}
           {(step === 'details' || step === 'payment') && (
             <div className="border-t px-4 py-2 mt-2 bg-white">
@@ -621,7 +708,7 @@ export function IntegratedCheckout({
                   <Button variant="outline" onClick={() => setStep('cart')}>
                     Voltar
                   </Button>
-                  <Button 
+                  <Button
                     className="flex-1"
                     onClick={() => setStep('payment')}
                     disabled={!customerName || !customerPhone}
@@ -635,7 +722,7 @@ export function IntegratedCheckout({
                   <Button variant="outline" onClick={() => setStep('details')}>
                     Voltar
                   </Button>
-                  <Button 
+                  <Button
                     className="flex-1"
                     onClick={handleSubmitOrder}
                     disabled={
@@ -657,11 +744,11 @@ export function IntegratedCheckout({
 }
 
 // Componente separado para item do carrinho
-function CartItemCard({ 
-  item, 
-  onUpdateQuantity, 
-  onRemove 
-}: { 
+function CartItemCard({
+  item,
+  onUpdateQuantity,
+  onRemove
+}: {
   item: CartItem
   onUpdateQuantity: (id: string, quantity: number) => void
   onRemove: (id: string) => void

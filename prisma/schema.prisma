@@ -575,14 +575,16 @@ model Invitation {
 }
 
 model Conversation {
-  id         String        @id @default(cuid())
-  customerId String
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  businessId String
-  messages   ChatMessage[]
-  business   Business      @relation("BusinessConversations", fields: [businessId], references: [id], onDelete: Cascade)
-  customer   User          @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
+  id            String        @id @default(cuid())
+  customerId    String?
+  customerName  String?       @map("customer_name")
+  customerPhone String?       @map("customer_phone")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  businessId    String
+  messages      ChatMessage[]
+  business      Business      @relation("BusinessConversations", fields: [businessId], references: [id], onDelete: Cascade)
+  customer      User?         @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
 
   @@unique([customerId, businessId])
   @@map("conversations")

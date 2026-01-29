@@ -18,7 +18,8 @@ interface BusinessOrder {
     name: string
     quantity: number
     price: number
-  }>
+  }> | undefined
+  address?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -38,6 +39,7 @@ interface LegacyOrder {
   updatedAt: string
   total: number
   type: string
+  address?: string | null
   [key: string]: unknown // Para outros campos extras
 }
 
@@ -63,14 +65,15 @@ export function useOrdersRealtime(
       orderNumber: businessOrder.orderNumber,
       customer: businessOrder.customerName,
       customerName: businessOrder.customerName,
-      items: businessOrder.items?.map((item) => 
+      items: businessOrder.items ? businessOrder.items.map((item) =>
         `${item.quantity}x ${item.name}`
-      ) || [],
+      ) : undefined,
       status: businessOrder.status,
       tableId: businessOrder.tableId,
       tableNumber: businessOrder.tableNumber,
       createdAt: businessOrder.createdAt,
       updatedAt: businessOrder.updatedAt,
+      address: businessOrder.address,
       total: businessOrder.total,
       type: businessOrder.type
     }

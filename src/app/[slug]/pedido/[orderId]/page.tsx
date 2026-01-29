@@ -6,11 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Clock, 
-  CheckCircle, 
-  ChefHat, 
-  Package, 
+import {
+  Clock,
+  CheckCircle,
+  ChefHat,
+  Package,
   Truck,
   XCircle,
   Plus,
@@ -21,6 +21,8 @@ import {
 import Link from 'next/link'
 import { getPublicOrder, addItemsToOrder } from '@/actions/orders/public-orders'
 import { useCart } from '@/contexts/cart-context'
+import { ChatButton } from '@/components/chat/chat-button'
+import { ChatSheet } from '@/components/chat/chat-sheet'
 
 // Status mapping
 const STATUS_CONFIG = {
@@ -72,6 +74,7 @@ type OrderStatus = keyof typeof STATUS_CONFIG
 
 interface OrderData {
   id: string
+  businessId: string
   orderNumber: string
   status: string
   paymentStatus: string
@@ -81,6 +84,7 @@ interface OrderData {
   type: string
   tableNumber?: string
   customerName: string
+  customerPhone: string
   createdAt: Date
   items: Array<{
     id: string
@@ -98,12 +102,13 @@ export default function OrderTrackingPage() {
   const params = useParams()
   const router = useRouter()
   const { items: cartItems, clearCart, getTotalPrice } = useCart()
-  
+
   const [order, setOrder] = useState<OrderData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isAddingItems, setIsAddingItems] = useState(false)
   const [showAddItemsSuccess, setShowAddItemsSuccess] = useState(false)
+  const [isChatOpen, setIsChatOpen] = useState(false)
 
   const slug = params.slug as string
   const orderId = params.orderId as string
@@ -232,7 +237,7 @@ export default function OrderTrackingPage() {
           </CardHeader>
           <CardContent>
             <p className="text-slate-600 text-sm mb-3">{statusConfig.description}</p>
-            
+
             {isDineIn && order.tableNumber && (
               <div className="flex items-center gap-2 text-sm bg-cyan-50 text-cyan-700 px-3 py-2 rounded-lg mb-3">
                 <Utensils className="h-4 w-4" />
@@ -347,6 +352,21 @@ export default function OrderTrackingPage() {
           </div>
         </motion.div>
       )}
+
+      {/* Chat UI */}
+      <ChatButton
+        onClick={() => setIsChatOpen(true)}
+        unreadCount={0}
+      />
+
+      <ChatSheet
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        businessId={order.businessId}
+        customerPhone={order.customerPhone}
+        customerName={order.customerName}
+        businessName={slug}
+      />
     </div>
   )
 }

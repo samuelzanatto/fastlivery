@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   // Desabilitar React Strict Mode temporariamente para debug de layout stability
   reactStrictMode: process.env.NODE_ENV === 'production',
 
@@ -100,7 +101,7 @@ const nextConfig: NextConfig = {
 
   // Otimizar carregamento de assets
   poweredByHeader: false,
-  
+
   images: {
     remotePatterns: [
       {
@@ -110,7 +111,7 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
       {
-        protocol: 'https', 
+        protocol: 'https',
         hostname: 'avatars.githubusercontent.com',
         port: '',
         pathname: '/**',

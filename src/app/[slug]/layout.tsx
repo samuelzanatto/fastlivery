@@ -60,7 +60,7 @@ export default async function BusinessLayout({ children, params }: LayoutProps) 
 
   return (
     <CartProvider>
-      <BusinessLayoutWrapper>
+      <BusinessLayoutWrapper businessId={business.id}>
         <div className="min-h-screen bg-gray-50">
           {children}
         </div>

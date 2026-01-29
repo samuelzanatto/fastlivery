@@ -37,22 +37,22 @@ export async function GET(
     // Construir manifest
     const manifest = {
       name: business.name,
-      short_name: business.name.length > 12 
-        ? business.name.substring(0, 12) 
+      short_name: business.name.length > 12
+        ? business.name.substring(0, 12)
         : business.name,
       description: business.description || `Faça seu pedido no ${business.name}`,
-      
+
       // Importante: start_url e scope são específicos do restaurante
       start_url: `/${slug}`,
       scope: `/${slug}`,
       id: `/${slug}`,
-      
+
       display: 'standalone',
       orientation: 'portrait',
-      
+
       theme_color: themeColor,
       background_color: backgroundColor,
-      
+
       // Ícones - usar API dinâmica que redimensiona o avatar
       icons: [
         {
@@ -116,10 +116,10 @@ export async function GET(
           purpose: 'maskable'
         }
       ],
-      
+
       // Categorias para app stores
       categories: ['food', 'shopping', 'lifestyle'],
-      
+
       // Atalhos rápidos
       shortcuts: [
         {
@@ -133,11 +133,11 @@ export async function GET(
           name: 'Meus Pedidos',
           short_name: 'Pedidos',
           description: 'Acompanhe seus pedidos',
-          url: `/pedidos`,
+          url: `/meus-pedidos`,
           icons: [{ src: '/icons/orders-icon.png', sizes: '96x96' }]
         }
       ],
-      
+
       // Screenshots para instalação rica
       screenshots: [
         {
@@ -148,11 +148,11 @@ export async function GET(
           label: 'Cardápio do restaurante'
         }
       ],
-      
+
       // Relacionado ao app nativo (se tiver no futuro)
       related_applications: [],
       prefer_related_applications: false,
-      
+
       // Protocolo de compartilhamento
       share_target: {
         action: `/${slug}`,

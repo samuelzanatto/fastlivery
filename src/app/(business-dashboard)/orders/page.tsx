@@ -2,18 +2,20 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import { useSession } from "@/lib/auth/auth-client"
+import { useRouter, useParams } from 'next/navigation'
+import { motion } from "framer-motion"
 
 import { notify } from '@/lib/notifications/notify'
 import { useOrdersRealtime } from '@/lib/realtime/hooks/use-orders-legacy'
 // Uso centralizado do businessId via store (remove fetch local redundante)
 import { useBusinessId } from '@/stores/business-store'
 import { useBusinessContext } from '@/hooks/business/use-business-context'
-import { 
-  ChevronDown, 
-  ChevronRight, 
-  Search, 
-  Clock, 
-  CheckCircle, 
+import {
+  ChevronDown,
+  ChevronRight,
+  Search,
+  Clock,
+  CheckCircle,
   Truck,
   Package,
   MapPin,
@@ -22,6 +24,7 @@ import {
   MessageCircle,
   Send,
   X,
+  Zap,
   Plus
 } from "lucide-react"
 
@@ -54,11 +57,12 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import NewOrderDialog from '@/components/orders/new-order-dialog'
 import { cn } from "@/lib/utils"
+import { AdminOrderChatDialog } from '@/components/chat/admin-order-chat-dialog'
 
 // Componente para cancelar pedido com reembolso
-const CancelOrderButton = ({ order, onOrderCancelled }: { 
-  order: Order; 
-  onOrderCancelled: () => void 
+const CancelOrderButton = ({ order, onOrderCancelled }: {
+  order: Order;
+  onOrderCancelled: () => void
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [reason, setReason] = useState("")
@@ -66,7 +70,7 @@ const CancelOrderButton = ({ order, onOrderCancelled }: {
 
   const handleCancel = async () => {
     if (!reason.trim()) {
-  notify('error', 'Por favor, informe o motivo do cancelamento')
+      notify('error', 'Por favor, informe o motivo do cancelamento')
       return
     }
 
@@ -81,9 +85,9 @@ const CancelOrderButton = ({ order, onOrderCancelled }: {
 
       // Mostrar resultado do cancelamento
       if (result.data.refund && result.data.refund.amount > 0) {
-        notify('success', `Pedido cancelado! Reembolso de ${new Intl.NumberFormat("pt-BR", { 
-          style: "currency", 
-          currency: "BRL" 
+        notify('success', `Pedido cancelado! Reembolso de ${new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL"
         }).format(result.data.refund.amount)} processado automaticamente.`)
       } else {
         notify('success', 'Pedido cancelado com sucesso!')
@@ -94,8 +98,8 @@ const CancelOrderButton = ({ order, onOrderCancelled }: {
       onOrderCancelled()
 
     } catch (error) {
-  console.error('Erro ao cancelar pedido:', error)
-  notify('error', error instanceof Error ? error.message : 'Erro ao cancelar pedido')
+      console.error('Erro ao cancelar pedido:', error)
+      notify('error', error instanceof Error ? error.message : 'Erro ao cancelar pedido')
     } finally {
       setIsLoading(false)
     }
@@ -103,9 +107,9 @@ const CancelOrderButton = ({ order, onOrderCancelled }: {
 
   return (
     <>
-      <Button 
-        variant="outline" 
-        size="sm" 
+      <Button
+        variant="outline"
+        size="sm"
         className="text-xs h-7 px-2 bg-white text-red-600 hover:text-red-700 hover:bg-red-50"
         onClick={() => setIsOpen(true)}
       >
@@ -118,7 +122,7 @@ const CancelOrderButton = ({ order, onOrderCancelled }: {
           <DialogHeader>
             <DialogTitle>Cancelar Pedido #{order.displayId || order.id}</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <p className="text-sm text-gray-600 mb-2">
@@ -201,6 +205,7 @@ interface Order {
   waiterName?: string
   observations?: string
   createdAt: string
+  customerPhone?: string
 }
 
 // Componente de formatação de Observações
@@ -236,7 +241,7 @@ const FormattedObservations = ({ raw }: { raw: string }) => {
         <div>
           <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1 block">Observações (endereço)</label>
           <div className="text-sm text-slate-700 bg-gray-50 border rounded-md p-2 space-y-0.5">
-            {lines.filter(Boolean).map((l,i)=>(<div key={i}>{l}</div>))}
+            {lines.filter(Boolean).map((l, i) => (<div key={i}>{l}</div>))}
           </div>
         </div>
       )
@@ -308,83 +313,199 @@ const mapDbPaymentStatus = (raw?: string): PaymentStatus => {
   return 'pending'
 }
 
-// Componente de Chat Dialog
-const ChatDialog = ({ order, open, onClose }: { order: Order; open: boolean; onClose: () => void }) => {
-  const [messages, setMessages] = useState([
-    { id: 1, text: "Olá! Seu pedido foi recebido.", sender: "business", time: "14:30" },
-    { id: 2, text: "Obrigado! Quanto tempo para ficar pronto?", sender: "customer", time: "14:32" },
-    { id: 3, text: "Aproximadamente 25 minutos.", sender: "business", time: "14:33" },
-  ])
-  const [newMessage, setNewMessage] = useState("")
+// ... imports
+// ... imports
 
-  const sendMessage = () => {
-    if (newMessage.trim()) {
-      const message = {
-        id: Date.now(),
-        text: newMessage.trim(),
-        sender: "business" as const,
-        time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+
+
+// ... StatusBadge, PaymentBadge, TypeBadge definitions
+
+const OrderExpandedDetails = ({ order, onOrderUpdate, isHydrating, canEdit, canDelete }: { order: Order; onOrderUpdate: () => void; isHydrating?: boolean; canEdit?: boolean; canDelete?: boolean }) => {
+  const businessId = useBusinessId()
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isChatOpen, setIsChatOpen] = useState(false)
+
+  // Realtime Unread Count for Business
+  useEffect(() => {
+    let channel: any = null
+
+    async function setupChatListener() {
+      // Precisa do telefone para identificar o cliente inequivocamente para o chat
+      if (!businessId || !order.customerPhone) return
+
+      try {
+        // Reutiliza a lógica de busca/criação para obter o ID da conversa
+        const { getOrCreateConversation } = await import('@/actions/chat/client-chat')
+        const res = await getOrCreateConversation(businessId, order.customer, order.customerPhone)
+
+        if (res.success && res.data) {
+          setUnreadCount(res.data.unread_count_business || 0)
+
+          const { supabase } = await import('@/lib/supabase')
+          channel = supabase
+            .channel(`unread_business:${res.data.id}`)
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'conversations',
+                filter: `id=eq.${res.data.id}`
+              },
+              (payload) => {
+                const updated = payload.new as any
+                setUnreadCount(updated.unread_count_business || 0)
+              }
+            )
+            .subscribe()
+        }
+      } catch (e) {
+        console.error('Error setup chat badge:', e)
       }
-      setMessages([...messages, message])
-      setNewMessage("")
     }
-  }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
+    setupChatListener()
+
+    return () => {
+      if (channel) {
+        import('@/lib/supabase').then(({ supabase }) => supabase.removeChannel(channel))
+      }
     }
+  }, [businessId, order.customer, order.customerPhone])
+
+  const handleChatClick = () => {
+    setIsChatOpen(true)
+    // Opcional: resetar contador localmente ao abrir, mas o real-time deve tratar isso quando o dialog marcar como lido
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5" />
-            Chat - {order.customer}
-          </DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          {/* Mensagens */}
-          <div className="h-96 overflow-y-auto rounded-lg p-3 space-y-3">
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.sender === 'business' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[70%] p-2 rounded-lg text-sm ${
-                  message.sender === 'business' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-white text-slate-900 border'
-                }`}>
-                  <div>{message.text}</div>
-                  <div className={`text-xs mt-1 ${message.sender === 'business' ? 'text-blue-100' : 'text-slate-500'}`}>
-                    {message.time}
-                  </div>
-                </div>
+    <>
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: "auto" }}
+        exit={{ opacity: 0, height: 0 }}
+        className="overflow-hidden"
+      >
+        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 border-b border-slate-100">
+          {/* Coluna 1: Itens */}
+          <div className="space-y-3 min-w-0">
+            <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+              <Package className="h-4 w-4 text-orange-500" />
+              Itens do Pedido
+            </h4>
+            <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm">
+              {order.items && order.items.length > 0 ? (
+                <ul className="space-y-2">
+                  {order.items.map((item, index) => (
+                    <li key={index} className="text-sm text-slate-700 flex items-start gap-2">
+                      <span className="text-slate-400 mt-1">•</span>
+                      <span className="break-all flex-1 min-w-0">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-500 italic">Sem itens registrados</p>
+              )}
+              <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+                <span className="text-sm font-medium text-slate-700">Total</span>
+                <span className="text-base font-bold text-slate-900">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.total)}
+                </span>
               </div>
-            ))}
+            </div>
           </div>
-          
-          {/* Input de nova mensagem */}
-          <div className="flex gap-2">
-            <Textarea
-              placeholder="Digite sua mensagem..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              className="flex-1 min-h-[40px] max-h-[100px] resize-none"
-              rows={2}
-            />
-            <Button onClick={sendMessage} size="sm" className="px-3">
-              <Send className="h-4 w-4" />
-            </Button>
+
+          {/* Coluna 2: Detalhes da Entrega/Cliente */}
+          <div className="space-y-3 min-w-0">
+            <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+              <User className="h-4 w-4 text-blue-500" />
+              Dados do Cliente
+            </h4>
+            <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm space-y-3">
+              <div className="min-w-0">
+                <label className="text-xs text-slate-500 uppercase font-semibold">Nome</label>
+                <p className="text-sm text-slate-800 font-medium break-all whitespace-normal">{order.customer}</p>
+              </div>
+
+              {order.type === 'delivery' && (
+                <div className="min-w-0">
+                  <label className="text-xs text-slate-500 uppercase font-semibold flex items-center gap-1">
+                    <MapPin className="h-3 w-3" /> Endereço
+                  </label>
+                  <p className="text-sm text-slate-700 break-all whitespace-normal">{order.address || "Endereço não informado"}</p>
+                </div>
+              )}
+
+              {order.type === 'dine-in' && (
+                <div>
+                  <label className="text-xs text-slate-500 uppercase font-semibold">Mesa</label>
+                  <p className="text-sm text-slate-700">Mesa {order.tableNumber || "?"}</p>
+                </div>
+              )}
+
+              {order.observations && (
+                <FormattedObservations raw={order.observations} />
+              )}
+            </div>
+          </div>
+
+          {/* Coluna 3: Ações */}
+          <div className="space-y-3 min-w-0">
+            <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+              <Zap className="h-4 w-4 text-yellow-500" />
+              Ações Rápidas
+            </h4>
+            <div className="flex flex-col gap-2">
+              <OrderActions order={order} onOrderUpdate={onOrderUpdate} />
+              <Button
+                variant="outline"
+                className="w-full justify-start text-indigo-600 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 relative"
+                onClick={handleChatClick}
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Abrir Chat com Cliente
+                {unreadCount > 0 && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
+                    {unreadCount}
+                  </span>
+                )}
+              </Button>
+
+              {canDelete && order.status !== 'cancelled' && order.status !== 'delivered' && (
+                <CancelOrderButton
+                  order={order}
+                  onOrderCancelled={onOrderUpdate}
+                />
+              )}
+
+              {/* Placeholder para outras ações futuras */}
+              <Button variant="ghost" size="sm" className="w-full justify-start text-slate-500 text-xs" disabled>
+                <Clock className="h-3 w-3 mr-2" />
+                Histórico (Em breve)
+              </Button>
+            </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* Chat Dialog Integration */}
+        {businessId && (
+          <AdminOrderChatDialog
+            isOpen={isChatOpen}
+            onOpenChange={setIsChatOpen}
+            orderId={order.displayId || order.id}
+            customerName={order.customer}
+            customerPhone={order.customerPhone}
+            businessId={businessId}
+          />
+        )}
+      </motion.div>
+    </>
   )
 }
+// Remove ChatDialog component definition entirely if it's separate.
+// But replace_file_content targets specific blocks.
+// I will just modify ExpandedOrderRow to use router and remove ChatDialog usage.
+// I will separately delete ChatDialog function if I can, or leave it unused for now (cleaner to remove).
 
 // Componentes
 const StatusBadge = ({ status }: { status: OrderStatus }) => {
@@ -395,7 +516,7 @@ const StatusBadge = ({ status }: { status: OrderStatus }) => {
     delivered: { label: "Entregue", className: "bg-emerald-100 text-emerald-800 border border-emerald-300" },
     cancelled: { label: "Cancelado", className: "bg-red-100 text-red-800 border border-red-300" },
   }
-  
+
   const config = statusConfig[status]
   return (
     <Badge variant="outline" className={config.className}>
@@ -406,12 +527,12 @@ const StatusBadge = ({ status }: { status: OrderStatus }) => {
 
 const PaymentBadge = ({ status }: { status: PaymentStatus }) => {
   const statusConfig = {
-  pending: { label: "Pendente", className: "bg-orange-100 text-orange-800 border border-orange-300" },
-  paid: { label: "Pago", className: "bg-green-100 text-green-800 border border-green-300" },
-  failed: { label: "Falhou", className: "bg-red-100 text-red-800 border border-red-300" },
-  cancelled: { label: "Cancelado", className: "bg-red-100 text-red-800 border border-red-300" },
+    pending: { label: "Pendente", className: "bg-orange-100 text-orange-800 border border-orange-300" },
+    paid: { label: "Pago", className: "bg-green-100 text-green-800 border border-green-300" },
+    failed: { label: "Falhou", className: "bg-red-100 text-red-800 border border-red-300" },
+    cancelled: { label: "Cancelado", className: "bg-red-100 text-red-800 border border-red-300" },
   }
-  
+
   const config = statusConfig[status]
   return (
     <Badge variant="outline" className={config.className}>
@@ -426,9 +547,9 @@ const TypeBadge = ({ type, tableNumber }: { type: OrderType; tableNumber?: numbe
     pickup: { label: "Retirada", icon: Package, className: "bg-amber-100 text-amber-800 border border-amber-300" },
     "dine-in": { label: `Mesa ${tableNumber || "?"}`, icon: User, className: "bg-cyan-100 text-cyan-800 border border-cyan-300" },
   }
-  
+
   const config = typeConfig[type]
-  
+
   return (
     <Badge variant="outline" className={cn("flex items-center gap-1", config.className)}>
       {config.label}
@@ -436,137 +557,8 @@ const TypeBadge = ({ type, tableNumber }: { type: OrderType; tableNumber?: numbe
   )
 }
 
-// Componente de linha expandida
-const ExpandedOrderRow = ({ order, onOrderUpdate, isHydrating, canEdit, canDelete }: { order: Order; onOrderUpdate: () => void; isHydrating?: boolean; canEdit?: boolean; canDelete?: boolean }) => {
-  const [chatOpen, setChatOpen] = useState(false)
+// Duplicate ExpandedOrderRow removed
 
-  return (
-    <>
-      <TableRow className="hover:bg-transparent">
-        <TableCell colSpan={7} className="p-0">
-          <div className="px-6 py-3 bg-white border-t">
-            <div className="max-w-full">
-              {/* Header compacto */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-4">
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Pedido #{order.id}
-                  </h3>
-                  <span className="text-sm text-slate-500">
-                    {new Date(order.createdAt).toLocaleString("pt-BR", {
-                      day: "2-digit", month: "2-digit", 
-                      hour: "2-digit", minute: "2-digit"
-                    })}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="text-xl font-bold text-slate-700">
-                    {new Intl.NumberFormat("pt-BR", { 
-                      style: "currency", 
-                      currency: "BRL" 
-                    }).format(order.total)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Grid compacto de informações */}
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-4">
-                {/* Cliente - coluna dupla */}
-                <div className="lg:col-span-2">
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1 block">Cliente</label>
-                      <div className="font-semibold text-slate-900">{order.customer}</div>
-                      {order.address && (
-                        <div className="text-sm text-slate-600 flex items-start gap-2 mt-1">
-                          <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />
-                          <span className="break-words">{order.address}</span>
-                        </div>
-                      )}
-                      {order.waiterName && (
-                        <div className="text-sm text-slate-600 mt-1">
-                          Garçom: <span className="font-medium">{order.waiterName}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Observações */}
-                    {order.observations && (
-                      <FormattedObservations raw={order.observations} />
-                    )}
-                  </div>
-                </div>
-
-                {/* Itens */}
-                <div>
-                  <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1 block">
-                    Itens ({order.items?.length || 0})
-                  </label>
-                  <div className="space-y-1">
-                    {(order.items ?? []).length > 0 ? (
-                      (order.items ?? []).map((item, index) => (
-                        <div key={index} className="text-sm text-slate-600 flex items-center gap-2">
-                          <span className="w-4 h-4 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium text-slate-600">
-                            {index + 1}
-                          </span>
-                          {item}
-                        </div>
-                      ))
-                    ) : isHydrating ? (
-                      <div className="text-xs text-slate-500 italic">Carregando itens...</div>
-                    ) : (
-                      <div className="text-xs text-slate-500 italic">Nenhum item carregado</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Ações */}
-                {canEdit && (
-                <div>
-                  <label className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1 block">Ações</label>
-                  <OrderActions order={order} onOrderUpdate={onOrderUpdate} />
-                </div>
-                )}
-              </div>
-
-              {/* Status badges e ações secundárias */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-200/60">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={order.status} />
-                  <PaymentBadge status={order.paymentStatus} />
-                  <TypeBadge type={order.type} tableNumber={order.tableNumber} />
-                </div>
-                
-                {/* Ações secundárias */}
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-xs h-7 px-2 bg-white"
-                    onClick={() => setChatOpen(true)}
-                  >
-                    <MessageCircle className="h-3 w-3 mr-1" />
-                    Chat
-                  </Button>
-                  {canDelete && order.status !== "cancelled" && order.status !== "delivered" && (
-                    <CancelOrderButton order={order} onOrderCancelled={onOrderUpdate} />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </TableCell>
-      </TableRow>
-      
-      {/* Chat Dialog */}
-      <ChatDialog 
-        order={order} 
-        open={chatOpen} 
-        onClose={() => setChatOpen(false)} 
-      />
-    </>
-  )
-}
 
 // Componente de ações
 const OrderActions = ({ order, onOrderUpdate }: { order: Order; onOrderUpdate: () => void }) => {
@@ -596,7 +588,7 @@ const OrderActions = ({ order, onOrderUpdate }: { order: Order; onOrderUpdate: (
       notify('success', 'Status do pedido atualizado', { description: `Pedido #${order.displayId || order.id} agora está ${newStatus}.` })
       onOrderUpdate()
     } catch (error) {
-  console.error('Erro ao atualizar status:', error)
+      console.error('Erro ao atualizar status:', error)
       notify('error', error instanceof Error ? error.message : 'Erro ao atualizar status')
     } finally {
       setIsUpdating(false)
@@ -606,25 +598,25 @@ const OrderActions = ({ order, onOrderUpdate }: { order: Order; onOrderUpdate: (
   const getNextStatus = (): { status: OrderStatus; label: string; color: string; icon: typeof Clock } | null => {
     switch (order.status) {
       case "pending":
-        return { 
-          status: "preparing", 
-          label: "Iniciar", 
-          color: "bg-slate-600 hover:bg-slate-700", 
-          icon: Clock 
+        return {
+          status: "preparing",
+          label: "Iniciar",
+          color: "bg-slate-600 hover:bg-slate-700",
+          icon: Clock
         }
       case "preparing":
-        return { 
-          status: "ready", 
-          label: "Pronto", 
-          color: "bg-slate-600 hover:bg-slate-700", 
-          icon: CheckCircle 
+        return {
+          status: "ready",
+          label: "Pronto",
+          color: "bg-slate-600 hover:bg-slate-700",
+          icon: CheckCircle
         }
       case "ready":
-        return { 
-          status: "delivered", 
-          label: "Entregar", 
-          color: "bg-slate-600 hover:bg-slate-700", 
-          icon: Truck 
+        return {
+          status: "delivered",
+          label: "Entregar",
+          color: "bg-slate-600 hover:bg-slate-700",
+          icon: Truck
         }
       default:
         return null
@@ -647,7 +639,7 @@ const OrderActions = ({ order, onOrderUpdate }: { order: Order; onOrderUpdate: (
   }
 
   return (
-    <Button 
+    <Button
       onClick={() => handleStatusUpdate(nextAction.status)}
       disabled={isUpdating}
       className={`w-full text-white font-medium text-sm h-8 ${nextAction.color} disabled:opacity-50`}
@@ -685,7 +677,7 @@ export default function OrdersPage() {
   const { data: _sessionData } = useSession()
 
   const businessId = useBusinessId()
-  
+
   // Permissões de pedidos
   const { hasPermission } = useBusinessContext()
   const canCreate = hasPermission('orders', 'create') || hasPermission('orders', 'manage')
@@ -701,7 +693,7 @@ export default function OrdersPage() {
       })
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (searchTerm) params.set('search', searchTerm)
-      
+
       const { getOrders } = await import('@/actions/orders/orders')
       const result = await getOrders(
         {
@@ -713,11 +705,11 @@ export default function OrdersPage() {
           pageSize: itemsPerPage
         }
       )
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Erro ao carregar pedidos')
       }
-      
+
       setOrders(result.data.data.map(order => ({
         ...order,
         status: order.status as OrderStatus,
@@ -727,205 +719,229 @@ export default function OrdersPage() {
       setStats(result.data.stats)
       setTotalPages(result.data.pagination.totalPages)
     } catch (e) {
-  console.error(e)
+      console.error(e)
     } finally {
       setLoading(false)
     }
   }, [currentPage, itemsPerPage, statusFilter, searchTerm])
 
   // Hook do Realtime com callbacks otimizados
-  const { 
+  const {
     ordersConnected: _isRealtimeConnected
   } = useOrdersRealtime(businessId || '', {
-      onOrderCreate: (newOrder) => {
-        // novo pedido recebido via realtime (incremental)
-        // Toast (fallback caso helper não exista)
-        notify('info', 'Novo pedido recebido!', { description: 'Verifique os detalhes no painel de pedidos.' })
+    onOrderCreate: (newOrder) => {
+      // novo pedido recebido via realtime (incremental)
+      // Toast (fallback caso helper não exista)
+      notify('info', 'Novo pedido recebido!', { description: 'Verifique os detalhes no painel de pedidos.' })
 
-        // Verificar se pedido passa pelos filtros atuais
-        const passesStatus = statusFilter === 'all' || newOrder.status === statusFilter
-        const passesSearch = !searchTerm ||
-          (newOrder.customer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           newOrder.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           newOrder.displayId?.toLowerCase().includes(searchTerm.toLowerCase()))
+      // Verificar se pedido passa pelos filtros atuais
+      const passesStatus = statusFilter === 'all' || newOrder.status === statusFilter
+      const passesSearch = !searchTerm ||
+        (newOrder.customer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          newOrder.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          newOrder.displayId?.toLowerCase().includes(searchTerm.toLowerCase()))
 
-        // Se não passa filtro, apenas atualiza contadores globais e sai
-        if (!passesStatus || !passesSearch) {
-          setStats(prev => ({
-            ...prev,
-            total: prev.total + 1,
-            pending: newOrder.status === 'pending' ? prev.pending + 1 : prev.pending
-          }))
-          return
-        }
-
-        // Se não estamos na primeira página, não podemos inserir sem bagunçar paginação.
-        // Estratégia: informar via toast e não alterar lista atual.
-        if (currentPage !== 1) {
-          setStats(prev => ({
-            ...prev,
-            total: prev.total + 1,
-            pending: newOrder.status === 'pending' ? prev.pending + 1 : prev.pending
-          }))
-          // incrementar contador off-page
-          setNewOffPageCount(c => c + 1)
-          return
-        }
-
-        // Inserção incremental na lista local (evita refetch total)
-        setOrders(prev => {
-          if (prev.some(o => o.id === newOrder.id)) return prev
-
-          // Narrowing genérico: o payload vindo do realtime pode ter campos extras.
-          const normalized: Order = {
-            id: (newOrder as { id: string }).id,
-            displayId: (newOrder as { displayId?: string; orderNumber?: string }).displayId || (newOrder as { orderNumber?: string }).orderNumber || (newOrder as { id: string }).id,
-            customer: (newOrder as { customer?: string; customerName?: string }).customer || (newOrder as { customerName?: string }).customerName || 'Cliente',
-            items: Array.isArray((newOrder as { items?: string[] }).items) ? (newOrder as { items?: string[] }).items || [] : [],
-            total: typeof (newOrder as { total?: number }).total === 'number' ? (newOrder as { total?: number }).total! : 0,
-            status: mapDbOrderStatus((newOrder as { status?: string }).status),
-            paymentStatus: mapDbPaymentStatus((newOrder as { paymentStatus?: string }).paymentStatus),
-            type: mapDbOrderType((newOrder as { type?: string }).type),
-            tableId: (newOrder as { tableId?: string | null }).tableId,
-            tableNumber: (newOrder as { tableNumber?: number | string | null }).tableNumber,
-            address: (newOrder as { address?: string }).address,
-            waiterName: (newOrder as { waiterName?: string }).waiterName,
-            observations: (newOrder as { observations?: string }).observations,
-            createdAt: (newOrder as { createdAt?: string }).createdAt || new Date().toISOString(),
-          }
-
-          const updated = [normalized, ...prev]
-          return updated.slice(0, itemsPerPage)
-        })
-
-        // Registrar timestamp do insert para ignorar update duplicado imediato
-        recentInsertsRef.current[newOrder.id] = Date.now()
-
-        // Atualizar stats (só incrementos simples; se precisar mais precisão, refetch agendado poderia ser usado)
+      // Se não passa filtro, apenas atualiza contadores globais e sai
+      if (!passesStatus || !passesSearch) {
         setStats(prev => ({
           ...prev,
           total: prev.total + 1,
           pending: newOrder.status === 'pending' ? prev.pending + 1 : prev.pending
         }))
+        return
+      }
 
-        // Marcar highlight
-        setHighlighted(prev => {
-          const clone = new Set(prev)
-          clone.add(newOrder.id)
-          return clone
-        })
-        // Limpar highlight depois de 4s
-        if (highlightTimeoutsRef.current[newOrder.id]) {
-          clearTimeout(highlightTimeoutsRef.current[newOrder.id])
-        }
-        highlightTimeoutsRef.current[newOrder.id] = setTimeout(() => {
-          setHighlighted(prev => {
-            const clone = new Set(prev)
-            clone.delete(newOrder.id)
-            return clone
-          })
-          delete highlightTimeoutsRef.current[newOrder.id]
-        }, 4000)
-      },
-      onOrderUpdate: (updatedOrder) => {
-  // update de pedido recebido via realtime
-
-        // Ignorar UPDATE que chega logo após INSERT (mesmo id em < 1.5s)
-        const insertedAt = recentInsertsRef.current[updatedOrder.id]
-        if (insertedAt && Date.now() - insertedAt < 1500) {
-          // ignorando update imediato pós-insert
-          return
-        }
-
-        // Normalizar campos (reutilizando mappers)
-        const normalized: Partial<Order> = {
-            id: (updatedOrder as { id: string }).id,
-            displayId: (updatedOrder as { displayId?: string; orderNumber?: string }).displayId || (updatedOrder as { orderNumber?: string }).orderNumber || (updatedOrder as { id: string }).id,
-            customer: (updatedOrder as { customer?: string; customerName?: string }).customer || (updatedOrder as { customerName?: string }).customerName || 'Cliente',
-            items: Array.isArray((updatedOrder as { items?: string[] }).items) ? (updatedOrder as { items?: string[] }).items || [] : undefined,
-            total: typeof (updatedOrder as { total?: number }).total === 'number' ? (updatedOrder as { total?: number }).total! : undefined,
-            status: mapDbOrderStatus((updatedOrder as { status?: string }).status),
-            paymentStatus: mapDbPaymentStatus((updatedOrder as { paymentStatus?: string }).paymentStatus),
-            type: mapDbOrderType((updatedOrder as { type?: string }).type),
-          tableId: (updatedOrder as { tableId?: string | null }).tableId,
-          tableNumber: (updatedOrder as { tableNumber?: number | string | null }).tableNumber,
-            address: (updatedOrder as { address?: string }).address,
-            waiterName: (updatedOrder as { waiterName?: string }).waiterName,
-            observations: (updatedOrder as { observations?: string }).observations,
-            createdAt: (updatedOrder as { createdAt?: string }).createdAt,
-        }
-
-        setOrders(prev => prev.map(o => {
-          if (o.id !== updatedOrder.id) return o
-          const previousPaymentStatus = o.paymentStatus
-          const nextPaymentStatus = normalized.paymentStatus || previousPaymentStatus
-          const previousTotal = o.total
-          const nextTotal = normalized.total || previousTotal
-          
-          // Notificação de mudança de pagamento
-          if (previousPaymentStatus !== nextPaymentStatus) {
-            const alreadyNotified = lastPaymentToastRef.current[o.id] === nextPaymentStatus
-            if (!alreadyNotified) {
-              if (nextPaymentStatus === 'paid') {
-                notify('success', 'Pagamento confirmado', { description: `Pedido #${(normalized.displayId || o.displayId || o.id).slice(0,6)} foi pago.` })
-              } else if (nextPaymentStatus === 'failed' || nextPaymentStatus === 'cancelled') {
-                notify('error', 'Pagamento não concluído', { description: `Status: ${nextPaymentStatus}` })
-              }
-              lastPaymentToastRef.current[o.id] = nextPaymentStatus
-            }
-          }
-          
-          // Notificação de itens adicionados (total aumentou)
-          if (nextTotal > previousTotal && previousTotal > 0) {
-            const diff = nextTotal - previousTotal
-            const tableInfo = normalized.tableNumber ? ` (Mesa ${normalized.tableNumber})` : ''
-            notify('info', `➕ Itens adicionados #${(normalized.displayId || o.displayId || o.id).slice(0,8)}${tableInfo}`, { 
-              description: `+R$ ${diff.toFixed(2)} adicionado ao pedido` 
-            })
-            // Também fazer highlight
-            setHighlighted(prev => {
-              const clone = new Set(prev)
-              clone.add(updatedOrder.id)
-              return clone
-            })
-            if (highlightTimeoutsRef.current[updatedOrder.id]) {
-              clearTimeout(highlightTimeoutsRef.current[updatedOrder.id])
-            }
-            highlightTimeoutsRef.current[updatedOrder.id] = setTimeout(() => {
-              setHighlighted(prev => {
-                const clone = new Set(prev)
-                clone.delete(updatedOrder.id)
-                return clone
-              })
-              delete highlightTimeoutsRef.current[updatedOrder.id]
-            }, 4000)
-          }
-          
-          return { ...o, ...normalized }
-        }))
-
-        // Ajustar stats se mudança de status impactar contadores simples
-        setStats(prev => {
-          const existing = orders.find(o => o.id === updatedOrder.id)
-          if (!existing || existing.status === normalized.status) return prev
-          const next = { ...prev }
-          // Só lidamos com transições envolvendo 'pending' porque é o contador exclusivo listado
-          if (existing.status === 'pending') next.pending = Math.max(0, next.pending - 1)
-          if (normalized.status === 'pending') next.pending = next.pending + 1
-          return next
-        })
-      },
-      onOrderDelete: (deletedOrderId) => {
-  // pedido removido via realtime
-        // Remoção local
-        setOrders(prev => prev.filter(o => o.id !== deletedOrderId))
+      // Se não estamos na primeira página, não podemos inserir sem bagunçar paginação.
+      // Estratégia: informar via toast e não alterar lista atual.
+      if (currentPage !== 1) {
         setStats(prev => ({
           ...prev,
-          total: Math.max(0, prev.total - 1),
-          pending: prev.pending - (orders.find(o => o.id === deletedOrderId)?.status === 'pending' ? 1 : 0)
+          total: prev.total + 1,
+          pending: newOrder.status === 'pending' ? prev.pending + 1 : prev.pending
         }))
+        // incrementar contador off-page
+        setNewOffPageCount(c => c + 1)
+        return
       }
-    })
+
+      // Inserção incremental na lista local (evita refetch total)
+      setOrders(prev => {
+        if (prev.some(o => o.id === newOrder.id)) return prev
+
+        // Narrowing genérico: o payload vindo do realtime pode ter campos extras.
+        const normalized: Order = {
+          id: (newOrder as { id: string }).id,
+          displayId: (newOrder as { displayId?: string; orderNumber?: string }).displayId || (newOrder as { orderNumber?: string }).orderNumber || (newOrder as { id: string }).id,
+          customer: (newOrder as { customer?: string; customerName?: string }).customer || (newOrder as { customerName?: string }).customerName || 'Cliente',
+          items: Array.isArray((newOrder as { items?: string[] }).items) ? (newOrder as { items?: string[] }).items || [] : [],
+          total: typeof (newOrder as { total?: number }).total === 'number' ? (newOrder as { total?: number }).total! : 0,
+          status: mapDbOrderStatus((newOrder as { status?: string }).status),
+          paymentStatus: mapDbPaymentStatus((newOrder as { paymentStatus?: string }).paymentStatus),
+          type: mapDbOrderType((newOrder as { type?: string }).type),
+          tableId: (newOrder as { tableId?: string | null }).tableId,
+          tableNumber: (newOrder as { tableNumber?: number | string | null }).tableNumber,
+          address: (newOrder as { address?: string }).address,
+          waiterName: (newOrder as { waiterName?: string }).waiterName,
+          observations: (newOrder as { observations?: string }).observations,
+          createdAt: (newOrder as { createdAt?: string }).createdAt || new Date().toISOString(),
+          customerPhone: (newOrder as { customerPhone?: string }).customerPhone,
+        }
+
+        const updated = [normalized, ...prev]
+        return updated.slice(0, itemsPerPage)
+      })
+
+      // Registrar timestamp do insert para ignorar update duplicado imediato
+      recentInsertsRef.current[newOrder.id] = Date.now()
+
+      // Atualizar stats (só incrementos simples; se precisar mais precisão, refetch agendado poderia ser usado)
+      setStats(prev => ({
+        ...prev,
+        total: prev.total + 1,
+        pending: newOrder.status === 'pending' ? prev.pending + 1 : prev.pending
+      }))
+
+      // Marcar highlight
+      setHighlighted(prev => {
+        const clone = new Set(prev)
+        clone.add(newOrder.id)
+        return clone
+      })
+      // Limpar highlight depois de 4s
+      if (highlightTimeoutsRef.current[newOrder.id]) {
+        clearTimeout(highlightTimeoutsRef.current[newOrder.id])
+      }
+      highlightTimeoutsRef.current[newOrder.id] = setTimeout(() => {
+        setHighlighted(prev => {
+          const clone = new Set(prev)
+          clone.delete(newOrder.id)
+          return clone
+        })
+        delete highlightTimeoutsRef.current[newOrder.id]
+      }, 4000)
+    },
+    onOrderUpdate: (updatedOrder) => {
+      // update de pedido recebido via realtime
+
+      // Ignorar UPDATE que chega logo após INSERT (mesmo id em < 1.5s)
+      const insertedAt = recentInsertsRef.current[updatedOrder.id]
+      if (insertedAt && Date.now() - insertedAt < 1500) {
+        // ignorando update imediato pós-insert
+        return
+      }
+
+      // Normalizar campos (reutilizando mappers)
+      // NOTA: Para updates, só aplicamos o que estiver presente no payload para não zerar arrays/relações que não vêm no realtime.
+      const rawUpdate = updatedOrder as any
+
+      const changes: Partial<Order> = {}
+
+      // Ids sempre vêm
+      if (rawUpdate.id) changes.id = rawUpdate.id
+
+      // Campos simples
+      if (rawUpdate.status) changes.status = mapDbOrderStatus(rawUpdate.status)
+      if (rawUpdate.paymentStatus) changes.paymentStatus = mapDbPaymentStatus(rawUpdate.paymentStatus)
+      if (rawUpdate.type) changes.type = mapDbOrderType(rawUpdate.type)
+      if (typeof rawUpdate.total === 'number') changes.total = rawUpdate.total
+
+      // Strings opcionais - só atualiza se vier no payload (mesmo null/empty string pode ser intencional, mas undefined não)
+      if (rawUpdate.displayId !== undefined) changes.displayId = rawUpdate.displayId
+      if (rawUpdate.orderNumber !== undefined && !changes.displayId) changes.displayId = rawUpdate.orderNumber
+
+      if (rawUpdate.customer !== undefined) changes.customer = rawUpdate.customer
+      if (rawUpdate.customerName !== undefined && !changes.customer) changes.customer = rawUpdate.customerName
+
+      if (rawUpdate.address !== undefined) changes.address = rawUpdate.address
+      if (rawUpdate.tableId !== undefined) changes.tableId = rawUpdate.tableId
+      if (rawUpdate.tableNumber !== undefined) changes.tableNumber = rawUpdate.tableNumber
+      if (rawUpdate.waiterName !== undefined) changes.waiterName = rawUpdate.waiterName
+      if (rawUpdate.observations !== undefined) changes.observations = rawUpdate.observations
+      if (rawUpdate.customerPhone !== undefined) changes.customerPhone = rawUpdate.customerPhone
+
+      // Array items: Realtime DB update normalmente NÃO traz items (relação).
+      // Só assumimos que items mudou se o payload trouxer explicitamente um array.
+      if (Array.isArray(rawUpdate.items)) {
+        changes.items = rawUpdate.items
+      }
+
+      // Aplicar mudanças
+      setOrders(prev => prev.map(o => {
+        if (o.id !== updatedOrder.id) return o
+
+        // Calcular próximos valores para notificação
+        const nextPaymentStatus = changes.paymentStatus || o.paymentStatus
+        const nextTotal = changes.total !== undefined ? changes.total : o.total
+        const nextStatus = changes.status || o.status
+
+        // Notificação de mudança de pagamento
+        if (nextPaymentStatus !== o.paymentStatus) {
+          const alreadyNotified = lastPaymentToastRef.current[o.id] === nextPaymentStatus
+          if (!alreadyNotified) {
+            if (nextPaymentStatus === 'paid') {
+              notify('success', 'Pagamento confirmado', { description: `Pedido #${(o.displayId || o.id).slice(0, 6)} foi pago.` })
+            } else if (nextPaymentStatus === 'failed' || nextPaymentStatus === 'cancelled') {
+              notify('error', 'Pagamento não concluído', { description: `Status: ${nextPaymentStatus}` })
+            }
+            lastPaymentToastRef.current[o.id] = nextPaymentStatus
+          }
+        }
+
+        // Notificação de itens adicionados (total aumentou)
+        if (nextTotal > o.total && o.total > 0) {
+          const diff = nextTotal - o.total
+          const tableInfo = (changes.tableNumber || o.tableNumber) ? ` (Mesa ${changes.tableNumber || o.tableNumber})` : ''
+          notify('info', `➕ Itens adicionados #${(o.displayId || o.id).slice(0, 8)}${tableInfo}`, {
+            description: `+R$ ${diff.toFixed(2)} adicionado ao pedido`
+          })
+          // Também fazer highlight
+          setHighlighted(prev => {
+            const clone = new Set(prev)
+            clone.add(updatedOrder.id)
+            return clone
+          })
+          if (highlightTimeoutsRef.current[updatedOrder.id]) {
+            clearTimeout(highlightTimeoutsRef.current[updatedOrder.id])
+          }
+          highlightTimeoutsRef.current[updatedOrder.id] = setTimeout(() => {
+            setHighlighted(prev => {
+              const clone = new Set(prev)
+              clone.delete(updatedOrder.id)
+              return clone
+            })
+            delete highlightTimeoutsRef.current[updatedOrder.id]
+          }, 4000)
+        }
+
+        return { ...o, ...changes }
+      }))
+
+      // Ajustar stats se mudança de status impactar contadores simples
+      setStats(prev => {
+        const existing = orders.find(o => o.id === updatedOrder.id)
+        if (!existing) return prev
+        // Usar o novo status (ou manter o antigo se não mudou)
+        const newStatus = changes.status || existing.status
+
+        if (existing.status === newStatus) return prev
+
+        const next = { ...prev }
+        // Só lidamos com transições envolvendo 'pending' porque é o contador exclusivo listado
+        if (existing.status === 'pending') next.pending = Math.max(0, next.pending - 1)
+        if (newStatus === 'pending') next.pending = next.pending + 1
+        return next
+      })
+    },
+    onOrderDelete: (deletedOrderId) => {
+      // Remoção local
+      setOrders(prev => prev.filter(o => o.id !== deletedOrderId))
+      setStats(prev => ({
+        ...prev,
+        total: Math.max(0, prev.total - 1),
+        pending: prev.pending - (orders.find(o => o.id === deletedOrderId)?.status === 'pending' ? 1 : 0)
+      }))
+    }
+  })
 
   useEffect(() => {
     if (!businessId) return
@@ -966,13 +982,13 @@ export default function OrdersPage() {
         // Buscar detalhes completos via orderNumber/displayId
         const orderNumber = target.displayId || target.id
         if (orderNumber) {
-          ;(async () => {
+          ; (async () => {
             try {
               setHydrating(prev => ({ ...prev, [orderId]: true }))
-              
+
               const { getOrderByNumber } = await import('@/actions/orders/orders')
               const result = await getOrderByNumber(orderNumber)
-              
+
               if (result.success) {
                 const full = result.data
                 // Mapear items detalhados -> formato string (ex: '1x Pizza Calabresa')
@@ -1004,7 +1020,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6 overflow-x-hidden">
       {/* Header */}
       <DashboardHeader
         title="Pedidos"
@@ -1021,10 +1037,10 @@ export default function OrdersPage() {
           </Button>
         )}
         {canCreate && (
-        <DashboardHeaderButton onClick={() => setIsNewOrderDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Pedido
-        </DashboardHeaderButton>
+          <DashboardHeaderButton onClick={() => setIsNewOrderDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Novo Pedido
+          </DashboardHeaderButton>
         )}
       </DashboardHeader>
 
@@ -1041,7 +1057,7 @@ export default function OrdersPage() {
                 className="pl-10"
               />
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[140px]">
@@ -1055,7 +1071,7 @@ export default function OrdersPage() {
                   <SelectItem value="delivered">Entregue</SelectItem>
                 </SelectContent>
               </Select>
-              
+
               <span className="text-sm text-slate-600 whitespace-nowrap">Itens por página:</span>
               <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(Number(value))}>
                 <SelectTrigger className="w-[70px]">
@@ -1081,8 +1097,8 @@ export default function OrdersPage() {
           ) : displayedOrders.length === 0 ? (
             <div className="p-8 text-center">
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {searchTerm || statusFilter !== 'all' 
-                  ? 'Nenhum pedido encontrado' 
+                {searchTerm || statusFilter !== 'all'
+                  ? 'Nenhum pedido encontrado'
                   : 'Nenhum pedido cadastrado'
                 }
               </h3>
@@ -1095,69 +1111,144 @@ export default function OrdersPage() {
             </div>
           ) : (
             <>
-              <Table className="text-sm [&_th]:h-10 [&_th]:py-1 [&_th]:leading-tight [&_td]:align-middle">
-                <TableHeader className="sticky top-0 bg-white z-10 shadow-sm border-b">
-                  <TableRow>
-                    <TableHead className="w-12 min-w-12 max-w-12 bg-white"></TableHead>
-                    <TableHead className="w-24 min-w-24 bg-white">Pedido</TableHead>
-                    <TableHead className="w-40 min-w-40 bg-white">Cliente</TableHead>
-                    <TableHead className="w-28 min-w-28 bg-white">Tipo</TableHead>
-                    <TableHead className="w-28 min-w-28 bg-white">Status</TableHead>
-                    <TableHead className="w-28 min-w-28 bg-white">Pagamento</TableHead>
-                    <TableHead className="w-24 min-w-24 text-right bg-white">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayedOrders.map((order) => [
-                    // Linha principal
-                    <TableRow 
-                      key={order.id} 
-                      className={cn("cursor-pointer transition-colors", highlighted.has(order.id) && "animate-[flashAdd_2.5s_ease-out_forwards] ring-1 ring-green-400/50")}
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto rounded-md border">
+                <Table className="text-sm [&_th]:h-10 [&_th]:py-1 [&_th]:leading-tight [&_td]:align-middle min-w-[800px]">
+                  <TableHeader className="sticky top-0 bg-white z-10 shadow-sm border-b">
+                    <TableRow>
+                      <TableHead className="w-12 min-w-12 max-w-12 bg-white"></TableHead>
+                      <TableHead className="w-24 min-w-24 bg-white">Pedido</TableHead>
+                      <TableHead className="w-40 min-w-40 bg-white">Cliente</TableHead>
+                      <TableHead className="w-28 min-w-28 bg-white">Tipo</TableHead>
+                      <TableHead className="w-28 min-w-28 bg-white">Status</TableHead>
+                      <TableHead className="w-28 min-w-28 bg-white">Pagamento</TableHead>
+                      <TableHead className="w-24 min-w-24 text-right bg-white">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayedOrders.map((order) => [
+                      // Linha principal
+                      <TableRow
+                        key={order.id}
+                        className={cn("cursor-pointer transition-colors", highlighted.has(order.id) && "animate-[flashAdd_2.5s_ease-out_forwards] ring-1 ring-green-400/50")}
+                        onClick={() => toggleRow(order.id)}
+                      >
+                        <TableCell className="w-12 min-w-12 max-w-12">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleRow(order.id)
+                            }}
+                          >
+                            {expandedRows.has(order.id) ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="w-24 min-w-24 font-medium">{order.displayId || order.id}</TableCell>
+                        <TableCell className="w-40 min-w-40">{order.customer}</TableCell>
+                        <TableCell className="w-28 min-w-28">
+                          <TypeBadge type={order.type} tableNumber={order.tableNumber} />
+                        </TableCell>
+                        <TableCell className="w-28 min-w-28">
+                          <StatusBadge status={order.status} />
+                        </TableCell>
+                        <TableCell className="w-28 min-w-28">
+                          <PaymentBadge status={order.paymentStatus} />
+                        </TableCell>
+                        <TableCell className="w-24 min-w-24 text-right font-medium">
+                          {new Intl.NumberFormat("pt-BR", {
+                            style: "currency",
+                            currency: "BRL"
+                          }).format(order.total)}
+                        </TableCell>
+                      </TableRow>,
+
+                      // Linha expandida
+                      ...(expandedRows.has(order.id) ? [
+                        <TableRow key={`${order.id}-expanded`} className="bg-slate-50 hover:bg-slate-50">
+                          <TableCell colSpan={7} className="p-0">
+                            <OrderExpandedDetails
+                              order={order}
+                              onOrderUpdate={fetchOrders}
+                              isHydrating={hydrating[order.id]}
+                              canEdit={canEdit}
+                              canDelete={canDelete}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ] : [])
+                    ]).flat()}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden">
+                {displayedOrders.map((order) => (
+                  <Card
+                    key={order.id}
+                    className={cn("overflow-hidden transition-all border-0 border-b shadow-none rounded-none last:border-0", highlighted.has(order.id) && "bg-green-50")}
+                  >
+                    <div
                       onClick={() => toggleRow(order.id)}
+                      className="p-4 cursor-pointer"
                     >
-                      <TableCell className="w-12 min-w-12 max-w-12">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-bold text-base">{order.displayId || order.id}</span>
+                          <span className="text-sm text-muted-foreground line-clamp-1">{order.customer}</span>
+                        </div>
+                        <StatusBadge status={order.status} />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                        <TypeBadge type={order.type} tableNumber={order.tableNumber} />
+                        <PaymentBadge status={order.paymentStatus} />
+                      </div>
+
+                      <div className="flex justify-between items-center pt-2 border-t mt-2">
+                        <span className="font-bold text-lg">
+                          {new Intl.NumberFormat("pt-BR", {
+                            style: "currency",
+                            currency: "BRL"
+                          }).format(order.total)}
+                        </span>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleRow(order.id)
-                          }}
+                          className="h-8 text-xs text-muted-foreground"
                         >
+                          {expandedRows.has(order.id) ? "Menos detalhes" : "Mais detalhes"}
                           {expandedRows.has(order.id) ? (
-                            <ChevronDown className="h-4 w-4" />
+                            <ChevronDown className="ml-1 h-3 w-3" />
                           ) : (
-                            <ChevronRight className="h-4 w-4" />
+                            <ChevronRight className="ml-1 h-3 w-3" />
                           )}
                         </Button>
-                      </TableCell>
-                      <TableCell className="w-24 min-w-24 font-medium">{order.displayId || order.id}</TableCell>
-                      <TableCell className="w-40 min-w-40">{order.customer}</TableCell>
-                      <TableCell className="w-28 min-w-28">
-                        <TypeBadge type={order.type} tableNumber={order.tableNumber} />
-                      </TableCell>
-                      <TableCell className="w-28 min-w-28">
-                        <StatusBadge status={order.status} />
-                      </TableCell>
-                      <TableCell className="w-28 min-w-28">
-                        <PaymentBadge status={order.paymentStatus} />
-                      </TableCell>
-                      <TableCell className="w-24 min-w-24 text-right font-medium">
-                        {new Intl.NumberFormat("pt-BR", { 
-                          style: "currency", 
-                          currency: "BRL" 
-                        }).format(order.total)}
-                      </TableCell>
-                    </TableRow>,
-                    
-                    // Linha expandida
-                    ...(expandedRows.has(order.id) ? [
-                      <ExpandedOrderRow key={`${order.id}-expanded`} order={order} onOrderUpdate={fetchOrders} isHydrating={hydrating[order.id]} canEdit={canEdit} canDelete={canDelete} />
-                    ] : [])
-                  ]).flat()}
-                </TableBody>
-              </Table>
+                      </div>
+                    </div>
+
+                    {/* Expanded Content Mobile */}
+                    {expandedRows.has(order.id) && (
+                      <div className="border-t bg-slate-50">
+                        <OrderExpandedDetails
+                          order={order}
+                          onOrderUpdate={fetchOrders}
+                          isHydrating={hydrating[order.id]}
+                          canEdit={canEdit}
+                          canDelete={canDelete}
+                        />
+                      </div>
+                    )}
+                  </Card>
+                ))}
+              </div>
 
               {/* Pagination */}
               {totalPages > 1 && (
@@ -1165,7 +1256,7 @@ export default function OrdersPage() {
                   <div className="text-sm text-gray-600">
                     Página {currentPage} de {totalPages} • Total {stats.total} pedidos
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">
                       <Button
@@ -1176,7 +1267,7 @@ export default function OrdersPage() {
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      
+
                       <div className="flex items-center gap-1">
                         {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                           const page = i + 1
@@ -1188,12 +1279,12 @@ export default function OrdersPage() {
                               className="w-8 h-8"
                               onClick={() => setCurrentPage(page)}
                               disabled={loading}
-                            > 
+                            >
                               {page}
                             </Button>
                           )
                         })}
-                        
+
                         {totalPages > 5 && (
                           <>
                             {currentPage > 3 && <span className="px-2">...</span>}
@@ -1211,7 +1302,7 @@ export default function OrdersPage() {
                           </>
                         )}
                       </div>
-                      
+
                       <Button
                         variant="outline"
                         size="sm"
@@ -1228,11 +1319,12 @@ export default function OrdersPage() {
           )}
         </CardContent>
       </Card>
-      
+
       {/* Dialog para criar novo pedido */}
-      <NewOrderDialog 
+      <NewOrderDialog
         open={isNewOrderDialogOpen}
         onOpenChange={setIsNewOrderDialogOpen}
+        businessId={businessId || ''}
         onOrderCreated={() => {
           // Atualizar a lista de pedidos quando um novo for criado
           fetchOrders()
@@ -1248,7 +1340,7 @@ export default function OrdersPage() {
 // A animação aplica um flash verde suave e desvanece.
 // Se preferir mover para um CSS global, basta copiar.
 // Nota: prefixo único para evitar conflito.
-;<style jsx global>{`
+; <style jsx global>{`
 @keyframes flashAdd { 
   0% { background-color: #ecfdf5; } 
   10% { background-color: #d1fae5; } 

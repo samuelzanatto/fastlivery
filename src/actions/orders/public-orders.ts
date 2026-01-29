@@ -53,7 +53,7 @@ export async function createPublicOrder(
   try {
     // Buscar business pelo slug
     const business = await prisma.business.findFirst({
-      where: { 
+      where: {
         slug: input.businessSlug,
         isActive: true
       },
@@ -206,10 +206,10 @@ export async function createPublicOrder(
       if (!product) {
         throw new Error(`Produto ${item.productId} não encontrado`)
       }
-      
+
       const itemTotal = item.price * item.quantity
       subtotal += itemTotal
-      
+
       return {
         productId: item.productId,
         quantity: item.quantity,
@@ -233,11 +233,22 @@ export async function createPublicOrder(
     // Gerar número do pedido
     const orderNumber = `PED${Date.now()}`
 
+    // Tentar obter usuário logado para associar ao pedido
+    let userId: string | null = null
+    try {
+      const { getAuthenticatedUser } = await import('@/lib/actions/auth-helpers')
+      const user = await getAuthenticatedUser()
+      userId = user.id
+    } catch {
+      // Ignorar erro de autenticação (guest)
+    }
+
     // Criar pedido
     const order = await prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
           orderNumber,
+          userId,
           type: input.type,
           businessId: business.id,
           customerName: input.customerName,
@@ -270,7 +281,7 @@ export async function createPublicOrder(
     console.log(`[LOG] Novo pedido público criado para ${business.name}:`, order.orderNumber)
 
     revalidatePath(`/${input.businessSlug}`)
-    
+
     return createSuccessResult({
       id: order.id,
       orderNumber: order.orderNumber,
@@ -542,6 +553,7 @@ export async function getPublicOrder(
   businessSlug: string
 ): Promise<ActionResult<{
   id: string
+  businessId: string
   orderNumber: string
   status: string
   paymentStatus: string
@@ -551,6 +563,7 @@ export async function getPublicOrder(
   type: string
   tableNumber?: string
   customerName: string
+  customerPhone: string
   createdAt: Date
   items: Array<{
     id: string
@@ -577,6 +590,7 @@ export async function getPublicOrder(
       },
       select: {
         id: true,
+        businessId: true,
         orderNumber: true,
         status: true,
         paymentStatus: true,
@@ -585,6 +599,7 @@ export async function getPublicOrder(
         deliveryFee: true,
         type: true,
         customerName: true,
+        customerPhone: true,
         createdAt: true,
         table: { select: { number: true } },
         items: {
@@ -609,5 +624,59 @@ export async function getPublicOrder(
     })
   } catch (error) {
     return handleActionError(error)
+  }
+}
+
+/**
+ * Buscar pedido ativo para o usuário autenticado (fallback robusto)
+ */
+export async function getActiveOrderForUser(businessSlug: string): Promise<ActionResult<{
+  id: string
+  orderNumber: string
+  status: string
+}>> {
+  try {
+    // 1. Verificar se usuário está autenticado
+    const { getAuthenticatedUser } = await import('@/lib/actions/auth-helpers')
+    let user
+    try {
+      user = await getAuthenticatedUser()
+    } catch {
+      return createSuccessResult(null as any) // Não autenticado
+    }
+
+    // 2. Buscar business
+    const business = await prisma.business.findFirst({
+      where: { slug: businessSlug, isActive: true },
+      select: { id: true }
+    })
+
+    if (!business) {
+      return createSuccessResult(null as any)
+    }
+
+    // 3. Buscar último pedido ativo deste usuário
+    const activeOrder = await prisma.order.findFirst({
+      where: {
+        userId: user.id,
+        businessId: business.id,
+        status: { in: ACTIVE_ORDER_STATUSES }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true
+      }
+    })
+
+    if (!activeOrder) {
+      return createSuccessResult(null as any)
+    }
+
+    return createSuccessResult(activeOrder)
+  } catch (error) {
+    // Silencioso, pois é um fallback
+    return createSuccessResult(null as any)
   }
 }

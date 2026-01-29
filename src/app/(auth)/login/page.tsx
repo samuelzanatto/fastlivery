@@ -5,9 +5,10 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Eye, EyeOff, Zap } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { signIn } from '@/lib/auth/auth-client'
 import { notify } from '@/lib/notifications/notify'
 
@@ -60,10 +61,10 @@ export default function LoginPage() {
         const urlParams = new URLSearchParams(window.location.search)
         const error = urlParams.get('error')
         const message = urlParams.get('message')
-        
+
         if (error) {
           let errorMessage = 'Erro ao fazer login'
-          
+
           switch (error) {
             case 'invalid_credentials':
               errorMessage = 'Email ou senha incorretos'
@@ -77,9 +78,9 @@ export default function LoginPage() {
             default:
               errorMessage = error
           }
-          
+
           notify('error', errorMessage, { duration: 6000 })
-          
+
           // Limpar a URL após mostrar o erro
           const url = new URL(window.location.href)
           url.searchParams.delete('error')
@@ -89,7 +90,7 @@ export default function LoginPage() {
 
         if (message) {
           notify('success', decodeURIComponent(message), { duration: 4000 })
-          
+
           // Limpar a URL
           const url = new URL(window.location.href)
           url.searchParams.delete('message')
@@ -125,13 +126,13 @@ export default function LoginPage() {
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro inesperado'
-  notify('error', errorMessage)
+      notify('error', errorMessage)
       setIsLoading(false)
     }
   }
 
   return (
-    <motion.div 
+    <motion.div
       key="login-page"
       className="grid min-h-svh lg:grid-cols-2"
       initial="initial"
@@ -141,7 +142,7 @@ export default function LoginPage() {
       transition={{ duration: 0.3 }}
     >
       {/* Formulário - Lado esquerdo */}
-      <motion.div 
+      <motion.div
         className="flex flex-col gap-4 p-6 md:p-10"
         initial="initial"
         animate={isExiting ? "exit" : "animate"}
@@ -149,7 +150,7 @@ export default function LoginPage() {
         transition={{ duration: 0.8, delay: isExiting ? 0.1 : 0.1 }}
       >
         <div className="flex flex-1 items-center justify-center">
-          <motion.div 
+          <motion.div
             className="w-full max-w-xs"
             initial="initial"
             animate={isExiting ? "exit" : "animate"}
@@ -163,9 +164,9 @@ export default function LoginPage() {
                   Digite seu email para acessar sua conta
                 </p>
               </div>
-              
+
               <form onSubmit={handleSubmit} className="grid gap-4">
-                <motion.div 
+                <motion.div
                   className="grid gap-2"
                   initial="initial"
                   animate={isExiting ? "exit" : "animate"}
@@ -182,8 +183,8 @@ export default function LoginPage() {
                     required
                   />
                 </motion.div>
-                
-                <motion.div 
+
+                <motion.div
                   className="grid gap-2"
                   initial="initial"
                   animate={isExiting ? "exit" : "animate"}
@@ -219,15 +220,15 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </motion.div>
-                
+
                 <motion.div
                   initial="initial"
                   animate={isExiting ? "exit" : "animate"}
                   variants={fadeInUp}
                   transition={{ duration: 0.8, delay: isExiting ? 0.5 : 0.5 }}
                 >
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     className="w-full bg-orange-500 hover:bg-orange-600"
                     disabled={isLoading}
                   >
@@ -236,14 +237,14 @@ export default function LoginPage() {
                 </motion.div>
               </form>
 
-              <motion.div 
+              <motion.div
                 className="text-center mt-4"
                 initial="initial"
                 animate={isExiting ? "exit" : "animate"}
                 variants={fadeIn}
                 transition={{ duration: 0.8, delay: isExiting ? 0.7 : 0.7 }}
               >
-                <button 
+                <button
                   onClick={() => handleNavigation('/')}
                   className="text-xs text-muted-foreground hover:text-orange-600 transition-colors duration-200 inline-flex items-center gap-1"
                 >
@@ -254,31 +255,22 @@ export default function LoginPage() {
           </motion.div>
         </div>
       </motion.div>
-      
+
       {/* Imagem de fundo - Lado direito */}
-      <motion.div 
-        className="bg-muted relative hidden lg:block"
+      <motion.div
+        className="relative hidden lg:block h-full w-full"
         initial="initial"
         animate={isExiting ? "exit" : "animate"}
         variants={fadeInRight}
         transition={{ duration: 0.8, delay: isExiting ? 0.1 : 0 }}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-orange-100">
-          <div className="absolute inset-0 bg-orange-500/5 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(249,115,22,0.1)_70%)]" />
-          <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-8 max-w-md">
-              <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-3 rounded-xl w-16 h-16 mx-auto mb-6">
-                <Zap className="w-full h-full text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-orange-900 mb-4">
-                Administre sua Empresa
-              </h2>
-              <p className="text-orange-700 leading-relaxed">
-                Acesse o painel administrativo para gerenciar pedidos, produtos, relatórios e muito mais.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Image
+          src="/restaurant-interior.jpg"
+          alt="Interior do restaurante"
+          fill
+          className="object-cover"
+          priority
+        />
       </motion.div>
     </motion.div>
   )

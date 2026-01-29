@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useCallback } from 'react'
-import { registerClientSession, getClientSession } from '@/actions/client-session'
+import { registerClientSession, getClientSession, clearClientSession } from '@/actions/client-session'
 
 /**
  * Hook para gerenciar a sessão do cliente baseado em deviceId
@@ -33,7 +33,7 @@ export function useClientSession() {
         businessSlug,
         tableNumber
       })
-      
+
       if (result.success) {
         // Também guardar no localStorage como fallback
         try {
@@ -48,7 +48,7 @@ export function useClientSession() {
           // Ignorar erros de localStorage
         }
       }
-      
+
       return result
     } catch (error) {
       console.error('Erro ao registrar sessão:', error)
@@ -61,11 +61,11 @@ export function useClientSession() {
     try {
       const deviceId = getDeviceId()
       const result = await getClientSession(deviceId)
-      
+
       if (result.success && result.data) {
         return result.data
       }
-      
+
       // Fallback para localStorage
       try {
         const stored = localStorage.getItem('fastlivery_current_order')
@@ -76,7 +76,7 @@ export function useClientSession() {
       } catch (e) {
         // Ignorar erros
       }
-      
+
       return null
     } catch (error) {
       console.error('Erro ao recuperar sessão:', error)
@@ -84,9 +84,23 @@ export function useClientSession() {
     }
   }, [getDeviceId])
 
+  // Limpar sessão
+  const clearSession = useCallback(async () => {
+    try {
+      const deviceId = getDeviceId()
+      await clearClientSession(deviceId)
+      localStorage.removeItem('fastlivery_current_order')
+      return true
+    } catch (error) {
+      console.error('Erro ao limpar sessão:', error)
+      return false
+    }
+  }, [getDeviceId])
+
   return {
     getDeviceId,
     registerSession,
-    getSession
+    getSession,
+    clearSession
   }
 }
