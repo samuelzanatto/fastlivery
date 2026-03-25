@@ -5,6 +5,7 @@ import { emailOTP, admin, organization } from "better-auth/plugins"
 import { prisma } from "../database/prisma"
 import nodemailer from "nodemailer"
 import bcrypt from "bcryptjs"
+import { getAppUrl } from "../utils/urls"
 import { 
   ac,
   // Roles de negócio genéricas
@@ -38,6 +39,8 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql"
   }),
+  baseURL: getAppUrl(),
+  trustHost: true,
   trustedOrigins: [
     // URLs de desenvolvimento
     ...(process.env.NODE_ENV === 'development' ? [

@@ -91,13 +91,27 @@ export default async function proxy(request: NextRequest) {
     let session = null
     try {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
+        
+        const fetchHeaders = new Headers()
+        const cookie = request.headers.get('cookie')
+        if (cookie) fetchHeaders.set('cookie', cookie)
+        
+        const host = request.headers.get('host')
+        if (host) fetchHeaders.set('x-forwarded-host', host)
+        
+        const proto = request.headers.get('x-forwarded-proto')
+        if (proto) fetchHeaders.set('x-forwarded-proto', proto)
+
         const res = await fetch(`${appUrl}/api/auth/get-session`, {
-            headers: {
-                cookie: request.headers.get('cookie') || ''
-            }
+            headers: fetchHeaders,
+            cache: 'no-store'
         })
         if (res.ok) {
-            session = await res.json()
+            const data = await res.json()
+            // Better Auth returns { session: null, user: null } if unauthenticated
+            if (data && data.session) {
+                session = data
+            }
         }
     } catch (error) {
         // Fail silently on auth check error
