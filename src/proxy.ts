@@ -86,43 +86,19 @@ export default async function proxy(request: NextRequest) {
         return new NextResponse(null, { status: 204, headers: buildCorsHeaders(origin) })
     }
 
-    // Minimal Session Check via Fetch (Edge Safe)
-    // We use the Better Auth API endpoint to validate the session cookie
-    let session = null
-    try {
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-        
-        // Em Vercel Edge, encaminhar todos os headers é a forma mais segura de garantir
-        // que cookies, Host, Origin e User-Agent cheguem idênticos ao servidor auth.
-        const res = await fetch(`${appUrl}/api/auth/get-session`, {
-            headers: request.headers,
-            cache: 'no-cache'
-        })
-        
-        const responseText = await res.text()
-        console.log(`[PROXY DEBUG] get-session status=${res.status} | ok=${res.ok} | bodyPrefix=${responseText.substring(0, 100)}...`)
-        
-        if (res.ok) {
-            try {
-                const data = JSON.parse(responseText)
-                // Better Auth retorna { session: null, user: null } quando não autenticado
-                if (data && data.session) {
-                    session = data
-                } else {
-                    console.log('[PROXY DEBUG] get-session retornou data válida porém sem session:', data)
-                }
-            } catch (e) {
-                console.error('[PROXY DEBUG] Falha ao parsear JSON:', e)
-            }
-        }
-    } catch (error) {
-        // Fail silently on auth check error
-        console.error('[PROXY DEBUG] Falha catastrófica no fetch:', error)
-    }
-
-    const isAuthenticated = !!session
-    const user = session?.user
-    console.log(`[PROXY DEBUG] Auth status final: isAuthenticated=${isAuthenticated}, userRole=${user?.role}`)
+    // Edge Session Presence Check
+    // Ao invés de fazer um fetch `get-session` e bater no banco de dados durante o Edge 
+    // (o que causa loops no Vercel por conta de headers, fetch constraints e latency),
+    // o Middleware atua apenas verificando a presença do cookie de sessão.
+    // A VERIFICAÇÃO REAL DE SEGURANÇA E ROLES ocorre nas Layouts ou Server Components!
+    const hasSecureToken = request.cookies.has('__Secure-better-auth.session_token')
+    const hasToken = request.cookies.has('better-auth.session_token')
+    const isAuthenticated = hasSecureToken || hasToken
+    
+    // Como não obtemos os dados reais neste fetch no Edge, definimos o usuário como nulo aqui.
+    // A validação de role fica a cargo do React / Layouts.
+    const user = null
+    console.log(`[PROXY DEBUG] Auth status final: isAuthenticated=${isAuthenticated} (verificado via cookie)`)
 
     // Check route types
     const isAdminRoute = pathname.startsWith('/admin') || adminRoutes.some(route => pathname.startsWith(route))
@@ -131,15 +107,11 @@ export default async function proxy(request: NextRequest) {
     const isPossibleBusinessSlug = couldBeBusinessSlug(pathname)
 
     // Skip auth check for public admin routes (login)
+    // Redirecionamentos de login para dashboard são feitos pelo cliente/layout.
     if (pathname === '/admin/login') {
-        // If logged in as admin, redirect to dashboard
         if (isAuthenticated) {
-            const role = user?.role
-            const isPlatform = role && (['platformAdmin', 'platformSupport'].includes(role))
-            if (isPlatform) {
-                console.log(`[PROXY] Redirecting authenticated admin from login to dashboard`)
-                return NextResponse.redirect(new URL('/admin/dashboard', request.url))
-            }
+            console.log(`[PROXY] Authenticated access to login, letting layout handle redirect...`)
+            // Retorna sem redirect para que o Next.js lide com o App Router
         }
     } else if (isAdminRoute) {
         // Handle protected admin routes
@@ -149,22 +121,7 @@ export default async function proxy(request: NextRequest) {
             loginUrl.searchParams.set('callbackUrl', pathname)
             return NextResponse.redirect(loginUrl)
         }
-
-        // Simple Role Check (replaces permission-cache for Edge safety)
-        const role = user?.role
-        const isBusiness = role && (['businessOwner', 'businessAdmin', 'businessManager', 'businessStaff'].includes(role))
-        const isPlatform = role && (['platformAdmin', 'platformSupport'].includes(role))
-
-        if (!isBusiness && !isPlatform) {
-            console.warn(`[SECURITY] Unauthorized admin route access: ${role}`)
-            return NextResponse.redirect(new URL('/admin/login?error=access_denied', request.url))
-        }
-
-        // Check if user/business is active
-        if (user && 'isActive' in user && !user.isActive) {
-            console.log(`[PROXY] Inactive user accessing admin route, redirecting to home`)
-            return NextResponse.redirect(new URL('/', request.url))
-        }
+        // Validação de Role substituída pelo AdminLayout para evitar chamadas de DB no Vercel Edge.
     }
 
     // Handle customer routes
@@ -174,23 +131,14 @@ export default async function proxy(request: NextRequest) {
             loginUrl.searchParams.set('callbackUrl', pathname)
             return NextResponse.redirect(loginUrl)
         }
-        // Strict customer role check might be too aggressive if admins want to see customer pages?
-        // For now, keep as is
-        if (user?.role !== CUSTOMER_ROLE) {
-            // Allow admins to view customer pages if needed? No, redirect them to dashboard
-            // Or just let them fall through if they shouldn't be here.
-            // The original code redirected non-customers:
-            return NextResponse.redirect(new URL('/customer-login?error=not_customer', request.url))
-        }
+        // Validação de Role do cliente também deixada para a camada App Router.
     }
 
-    // Handle auth routes - redirect if already authenticated
-    if (isAuthRoute && isAuthenticated) {
-        if (user?.role && (PLATFORM_ROLES.has(user.role) || BUSINESS_ROLES.has(user.role))) {
-            return NextResponse.redirect(new URL('/dashboard', request.url))
-        } else if (user?.role === CUSTOMER_ROLE) {
-            return NextResponse.redirect(new URL('/', request.url))
-        }
+    // Handle auth routes - redirect se a pessoa estiver acessando páginas genéricas `/login`
+    if (isAuthRoute && isAuthenticated && pathname !== '/admin/login') {
+        // Sem como saber a role no Edge, os layouts do Next.js devem validar
+        // e redirecionar pra /dashboard ou / a depender da role na hidratação.
+        console.log(`[PROXY] Authenticated access to ${pathname}, leaving redirect to the React application`)
     }
 
     if (pathname === '/signup' || pathname === '/register' || pathname === '/signin') {
