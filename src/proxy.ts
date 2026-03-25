@@ -92,34 +92,37 @@ export default async function proxy(request: NextRequest) {
     try {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
         
-        const fetchHeaders = new Headers()
-        const cookie = request.headers.get('cookie')
-        if (cookie) fetchHeaders.set('cookie', cookie)
-        
-        const host = request.headers.get('host')
-        if (host) fetchHeaders.set('x-forwarded-host', host)
-        
-        const proto = request.headers.get('x-forwarded-proto')
-        if (proto) fetchHeaders.set('x-forwarded-proto', proto)
-
+        // Em Vercel Edge, encaminhar todos os headers é a forma mais segura de garantir
+        // que cookies, Host, Origin e User-Agent cheguem idênticos ao servidor auth.
         const res = await fetch(`${appUrl}/api/auth/get-session`, {
-            headers: fetchHeaders,
-            cache: 'no-store'
+            headers: request.headers,
+            cache: 'no-cache'
         })
+        
+        const responseText = await res.text()
+        console.log(`[PROXY DEBUG] get-session status=${res.status} | ok=${res.ok} | bodyPrefix=${responseText.substring(0, 100)}...`)
+        
         if (res.ok) {
-            const data = await res.json()
-            // Better Auth returns { session: null, user: null } if unauthenticated
-            if (data && data.session) {
-                session = data
+            try {
+                const data = JSON.parse(responseText)
+                // Better Auth retorna { session: null, user: null } quando não autenticado
+                if (data && data.session) {
+                    session = data
+                } else {
+                    console.log('[PROXY DEBUG] get-session retornou data válida porém sem session:', data)
+                }
+            } catch (e) {
+                console.error('[PROXY DEBUG] Falha ao parsear JSON:', e)
             }
         }
     } catch (error) {
         // Fail silently on auth check error
-        console.error('Auth check failed:', error)
+        console.error('[PROXY DEBUG] Falha catastrófica no fetch:', error)
     }
 
     const isAuthenticated = !!session
     const user = session?.user
+    console.log(`[PROXY DEBUG] Auth status final: isAuthenticated=${isAuthenticated}, userRole=${user?.role}`)
 
     // Check route types
     const isAdminRoute = pathname.startsWith('/admin') || adminRoutes.some(route => pathname.startsWith(route))
